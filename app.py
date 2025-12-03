@@ -22,6 +22,11 @@ def get_questions():
     # Return the fixed list of questions as JSON
     return jsonify(QUESTIONS)
 
+@app.route('/answers', methods=['GET'])
+def get_answers():
+    # Return all stored answers as JSON
+    return jsonify(stored_answers)
+
 @app.route('/answers', methods=['POST'])
 def submit_answers():
     # Receive JSON payload like { "answers": [{ "questionId": 1, "answer": "Alice" }, ...] }
