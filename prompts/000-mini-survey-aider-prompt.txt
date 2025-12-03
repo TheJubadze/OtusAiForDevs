@@ -1,0 +1,168 @@
+You are an AI pair programmer helping me create a very small teaching project called **“Mini Survey”**.
+Your task: create or update the files listed below to implement a minimal full-stack app with a Python backend and a tiny HTML+JS frontend.
+Please only touch the files explicitly listed. If a file does not exist, create it.
+
+---
+
+## Stack and project layout
+
+Use:
+
+- Backend: Python 3 + Flask
+- Frontend: simple HTML + vanilla JavaScript (no build tools, no frameworks)
+
+Project structure (create these files and folders if they don’t exist):
+
+- app.py – Flask backend
+- templates/index.html – HTML page with a simple UI
+- static/app.js – JS logic for fetching questions and sending answers
+- requirements.txt – Python dependencies
+- README.md – short instructions on how to run the app
+
+The app should be runnable locally with:
+
+    pip install -r requirements.txt
+    python app.py
+
+Then open the app in the browser (e.g. http://127.0.0.1:5000/).
+
+---
+
+## Functional requirements
+
+### Backend (Flask in app.py)
+
+Implement a small HTTP API with two endpoints:
+
+1. GET /questions
+   - Returns a fixed list of 3–5 survey questions.
+   - Questions are hardcoded in the backend (no database).
+   - Response format: JSON array of objects, for example:
+
+        [
+          { "id": 1, "text": "What is your name?" },
+          { "id": 2, "text": "How old are you?" },
+          { "id": 3, "text": "What is your favorite programming language?" }
+        ]
+
+2. POST /answers
+   - Accepts a JSON payload with the user’s answers to the questions.
+   - Example payload shape (you can define exact structure, but keep it simple and clear in code comments):
+
+        {
+          "answers": [
+            { "questionId": 1, "answer": "Alice" },
+            { "questionId": 2, "answer": "21" }
+          ]
+        }
+
+   - Stores the answers in memory only for the lifetime of the app, e.g. in a global Python list:
+
+        stored_answers = []
+
+   - Appends each new submission to this in-memory list.
+   - Returns a simple JSON response like:
+
+        { "status": "ok" }
+
+3. Frontend serving
+   - The Flask app should:
+     - Serve index.html at route / using render_template.
+     - Serve static/app.js as a static file (standard Flask static setup).
+   - This way, the frontend and backend share the same origin, and no CORS configuration is needed.
+
+4. Code style
+   - Keep the Flask app small, readable, and beginner-friendly.
+   - Include short comments explaining what each route does.
+   - Add a if __name__ == "__main__": block to run the app with debug=True for local development.
+
+5. Dependencies
+   - In requirements.txt, include at least:
+
+        flask
+
+---
+
+### Frontend (templates/index.html and static/app.js)
+
+The frontend is a minimal web page that talks to the backend.
+
+Behavior:
+
+1. On page load:
+   - app.js should call GET /questions.
+   - After receiving the questions, render them as a simple HTML form.
+   - Each question should have a corresponding input field (you can use <input type="text"> or <textarea> for all questions to keep it simple).
+
+2. On form submission:
+   - Collect all answers from the input fields.
+   - Build a JSON object that matches the expected format for POST /answers.
+   - Send the data to the backend using fetch with:
+     - method: "POST"
+     - headers: { "Content-Type": "application/json" }
+     - body: JSON.stringify(...)
+
+3. After a successful response:
+   - Hide the form (or disable it) and show a message:
+     - "Thank you for your answers!"
+   - This message can be a simple <div> rendered dynamically by JS.
+
+index.html requirements:
+
+- Use a basic HTML5 skeleton.
+- Include a <div id="app"></div> that will be populated by JavaScript.
+- Include the script:
+
+      <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+- Optionally, you can add very minimal CSS styles inline or via a simple <style> block (but keep it small and readable).
+
+app.js requirements:
+
+- On DOMContentLoaded, fetch questions from /questions.
+- Render the questions inside #app as a <form> with:
+  - a label for each question
+  - an input field
+  - a submit button
+- Attach a submit event listener to the form that:
+  - prevents default behavior
+  - collects answers
+  - sends them via POST /answers
+  - on success, replaces the form content with a simple <p>Thank you for your answers!</p>.
+
+- Include short comments to make it easy for a student to follow the logic.
+
+---
+
+### README (README.md)
+
+Create a short README.md that explains:
+
+1. What the project is: a simple “Mini Survey” full-stack example.
+2. How to set it up:
+
+       python -m venv .venv
+       source .venv/bin/activate  # or .venv\Scriptsctivate on Windows
+       pip install -r requirements.txt
+       python app.py
+
+3. Where to open the application in the browser (e.g. http://127.0.0.1:5000/).
+4. Briefly describe the two API endpoints and the basic behavior of the app.
+
+---
+
+What you should do now:
+
+1. Create or update the files:
+   - app.py
+   - templates/index.html
+   - static/app.js
+   - requirements.txt
+   - README.md
+2. Ensure the app runs locally and the described flow works:
+   - Open / → questions are loaded
+   - User fills in the form → sends answers via POST /answers
+   - Backend stores answers in memory
+   - Frontend shows “Thank you for your answers!” message on success
+
+Make the code clean, well-organized, and easy for a beginner to read and learn from.
