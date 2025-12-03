@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Survey</title>
+    <style>
+        /* Minimal inline styles for readability */
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        label { display: block; margin: 15px 0 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; margin-top: 20px; }
+        button:hover { background: #0056b3; }
+        #app p { font-size: 18px; color: green; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Mini Survey</h1>
+    <div id="app">
+        <!-- Questions and form will be loaded here by JavaScript -->
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
