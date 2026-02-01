@@ -9,6 +9,9 @@ import re
 import json
 import asyncio
 import subprocess
+import sys
+import io
+import logging
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, asdict
@@ -17,6 +20,26 @@ import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+import tmdbsimple as tmdb
+from googlesearch import search
+from bs4 import BeautifulSoup
+
+# Настройка кодировки для Windows консоли
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# Настройка логирования
+LOG_PATH = Path(__file__).parent / "mcp_server.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_PATH, encoding='utf-8'),
+        logging.StreamHandler(sys.stderr)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Загрузка конфигурации
 CONFIG_PATH = Path(__file__).parent / "config.json"
@@ -49,6 +72,13 @@ VIDEO_EXTENSIONS = set(CONFIG["video_extensions"])
 # OMDb API ключ (бесплатный, нужно получить на http://www.omdbapi.com/apikey.aspx)
 OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "")
 
+# TMDb API ключ (бесплатный, получить на https://www.themoviedb.org/settings/api)
+TMDB_API_KEY = CONFIG.get("tmdb_api_key") or os.environ.get("TMDB_API_KEY", "")
+
+# Настройка TMDb API
+if TMDB_API_KEY:
+    tmdb.API_KEY = TMDB_API_KEY
+
 server = Server("videolibrary")
 
 
@@ -74,14 +104,42 @@ def sanitize_filename(name: str) -> str:
 
 
 def clean_movie_name(filename: str) -> str:
-    """Очищает название файла для поиска в OMDb."""
+    """Очищает название файла для поиска в TMDb."""
     name = Path(filename).stem
-    # Убираем год в скобках или без
-    name = re.sub(r"[\(\[]?\d{4}[\)\]]?", "", name)
-    # Убираем качество и прочие теги
-    name = re.sub(r"(1080p|720p|480p|2160p|4k|HDRip|BDRip|BluRay|WEB-?DL|DVDRip|HDTV|x264|x265|HEVC|AAC|DTS|Rus|Eng)", "", name, flags=re.IGNORECASE)
-    # Убираем точки и подчеркивания
+
+    # Убираем год в скобках или квадратных скобках СНАЧАЛА
+    name = re.sub(r"[\(\[]\d{4}[\)\]]", "", name)
+
+    # Убираем всё в квадратных скобках (часто там теги)
+    name = re.sub(r'\[.*?\]', "", name)
+
+    # Убираем качество и прочие теги с разными разделителями (точка, пробел, подчеркивание)
+    patterns_to_remove = [
+        r'[._\s](1080p|720p|480p|2160p|4k|UHD)([._\s]|$)',
+        r'[._\s](HDRip|BDRip|BluRay|WEB-?DL|DVDRip|HDTV|WEBRip|BDRemux|REMUX)([._\s]|$)',
+        r'[._\s](x264|x265|HEVC|AVC|h264|h265)([._\s]|$)',
+        r'[._\s](AAC|DTS|AC3|DD5[._]?1?|TrueHD|DDP5[._]?1?|DD\d[._]?\d?)([._\s]|$)',
+        r'[._\s](Rus|Eng|ENG|RUS|DUAL|MVO|AVO|VO|UKR)([._\s]|$)',
+        r'[._\s](NF|AMZN|DSNP|HBO|HULU)([._\s]|$)',
+        r'[._\s](Open[._]?Matte|Extended|Unrated|IMAX)([._\s]|$)',
+        r'[._\s]\d+bit([._\s]|$)',  # 10bit, etc
+        r'[._\s](60\s?FPS)([._\s]|$)',  # FPS
+        r'[._\s]by[._\s]\w+',  # "by TCG", "By EXCLUSIF" etc
+        r'-(RARBG|YIFY|ETRG|FGT|FLEET|SPARKS|DEFLATE|CHD|NTb|HELLYWOOD|AsiaOne|Delia|ExKinoRay|HDUploaders|TCG|EXCLUSIF)([._\s]|$)',
+    ]
+
+    for pattern in patterns_to_remove:
+        name = re.sub(pattern, " ", name, flags=re.IGNORECASE)
+
+    # Убираем оставшиеся круглые скобки (после удаления года)
+    name = re.sub(r'\(.*?\)', "", name)
+
+    # Теперь заменяем точки и подчеркивания на пробелы
     name = name.replace(".", " ").replace("_", " ")
+
+    # Удаляем оставшиеся годы без скобок
+    name = re.sub(r'\b\d{4}\b', "", name)
+
     # Убираем лишние пробелы
     name = re.sub(r"\s+", " ", name).strip()
     return name
@@ -295,6 +353,102 @@ async def fetch_movie_info(title: str, year: Optional[int] = None) -> dict:
             return {"error": f"Ошибка при запросе к OMDb: {str(e)}"}
 
 
+async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
+    """Получает информацию о фильме из TMDb API."""
+    if not TMDB_API_KEY:
+        return {"error": "TMDB_API_KEY не установлен. Получите бесплатный ключ на https://www.themoviedb.org/settings/api"}
+
+    def _fetch():
+        try:
+            # Попытка 1: Поиск с полным названием
+            search = tmdb.Search()
+            if year:
+                search.movie(query=title, year=year)
+            else:
+                search.movie(query=title)
+
+            # Попытка 2: Если не нашли, попробуем упростить название (первые 3 слова)
+            if not search.results and len(title.split()) > 3:
+                simplified_title = ' '.join(title.split()[:3])
+                logger.info(f"TMDb: не нашли '{title}', пробуем '{simplified_title}'")
+                if year:
+                    search.movie(query=simplified_title, year=year)
+                else:
+                    search.movie(query=simplified_title)
+
+            # Попытка 3: Еще проще - только первые 2 слова
+            if not search.results and len(title.split()) > 2:
+                simplified_title = ' '.join(title.split()[:2])
+                logger.info(f"TMDb: не нашли, пробуем '{simplified_title}'")
+                if year:
+                    search.movie(query=simplified_title, year=year)
+                else:
+                    search.movie(query=simplified_title)
+
+            # Попытка 4: Самое простое - только ПЕРВОЕ слово + год
+            if not search.results and len(title.split()) > 1 and year:
+                first_word = title.split()[0]
+                logger.info(f"TMDb: не нашли, пробуем '{first_word}' + {year}")
+                search.movie(query=first_word, year=year)
+
+            if not search.results:
+                return {"error": f"Фильм '{title}' не найден в TMDb"}
+
+            # Берем первый результат
+            movie_data = search.results[0]
+            movie_id = movie_data['id']
+
+            # Получаем детальную информацию о фильме
+            movie = tmdb.Movies(movie_id)
+            movie_info = movie.info()
+
+            # Получаем информацию о актерах и режиссерах
+            credits = movie.credits()
+
+            # Извлекаем режиссеров
+            directors = [crew['name'] for crew in credits.get('crew', []) if crew.get('job') == 'Director']
+            director_str = ', '.join(directors[:3]) if directors else "N/A"
+
+            # Извлекаем актеров
+            actors = [cast['name'] for cast in credits.get('cast', [])[:5]]
+            actor_str = ', '.join(actors) if actors else "N/A"
+
+            # Извлекаем жанры
+            genres = [genre['name'] for genre in movie_info.get('genres', [])]
+            genre_str = ', '.join(genres) if genres else "N/A"
+
+            # Извлекаем страны
+            countries = [country['name'] for country in movie_info.get('production_countries', [])]
+            country_str = ', '.join(countries) if countries else "N/A"
+
+            # Формируем ответ в формате, совместимом с OMDb
+            return {
+                "title": movie_info.get('title', 'N/A'),
+                "year": movie_info.get('release_date', 'N/A')[:4] if movie_info.get('release_date') else 'N/A',
+                "rated": 'N/A',  # TMDb не предоставляет рейтинг возраста напрямую
+                "released": movie_info.get('release_date', 'N/A'),
+                "runtime": f"{movie_info.get('runtime', 'N/A')} min" if movie_info.get('runtime') else 'N/A',
+                "genre": genre_str,
+                "director": director_str,
+                "actors": actor_str,
+                "plot": movie_info.get('overview', 'N/A'),
+                "language": movie_info.get('original_language', 'N/A'),
+                "country": country_str,
+                "awards": 'N/A',
+                "poster": f"https://image.tmdb.org/t/p/original{movie_info.get('poster_path')}" if movie_info.get('poster_path') else 'N/A',
+                "imdb_rating": str(movie_info.get('vote_average', 'N/A')),
+                "imdb_votes": str(movie_info.get('vote_count', 'N/A')),
+                "imdb_id": movie_info.get('imdb_id', 'N/A'),
+                "type": "movie",
+                "box_office": f"${movie_info.get('revenue', 0):,}" if movie_info.get('revenue') else 'N/A'
+            }
+        except Exception as e:
+            return {"error": f"Ошибка при запросе к TMDb: {str(e)}"}
+
+    # Выполняем синхронную функцию в отдельном потоке
+    return await asyncio.to_thread(_fetch)
+
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """Возвращает список доступных инструментов."""
@@ -424,8 +578,22 @@ async def list_tools() -> list[Tool]:
 
 
 @server.call_tool()
+def log_response(result: list[TextContent]) -> list[TextContent]:
+    """Логирует ответ сервера."""
+    logger.info(f"=== Ответ Claude ===")
+    for i, content in enumerate(result):
+        text_preview = content.text[:500] + "..." if len(content.text) > 500 else content.text
+        logger.info(f"Результат [{i}]: {text_preview}")
+    return result
+
+
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Обрабатывает вызовы инструментов."""
+
+    # Логирование входящего запроса
+    logger.info(f"=== Запрос от Claude ===")
+    logger.info(f"Инструмент: {name}")
+    logger.info(f"Аргументы: {json.dumps(arguments, ensure_ascii=False, indent=2)}")
 
     if name == "list_movies":
         limit = arguments.get("limit", 0)
@@ -439,7 +607,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "count": len(videos),
             "movies": [asdict(v) for v in videos]
         }
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
 
     elif name == "list_cartoons":
         limit = arguments.get("limit", 0)
@@ -453,14 +621,14 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "count": len(videos),
             "cartoons": [asdict(v) for v in videos]
         }
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
 
     elif name == "get_movie_info":
         title = arguments.get("title", "")
         year = arguments.get("year")
 
-        info = await fetch_movie_info(title, year)
-        return [TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))]
+        info = await fetch_movie_info_tmdb(title, year)
+        return log_response([TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))])
 
     elif name == "search_library":
         query = arguments.get("query", "").lower()
@@ -483,7 +651,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             "count": len(results),
             "results": [asdict(v) for v in results]
         }
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
 
     elif name == "get_library_stats":
         movies_path = Path(VIDEOS_ROOT) / MOVIES_FOLDER
@@ -520,7 +688,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "total_size_gb": round((total_movies_size + total_cartoons_size) / 1024, 2)
             }
         }
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
 
     elif name == "get_movie_info_by_file":
         filename = arguments.get("filename", "")
@@ -529,13 +697,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         clean_name = clean_movie_name(filename)
         year = extract_year(filename)
 
-        info = await fetch_movie_info(clean_name, year)
+        info = await fetch_movie_info_tmdb(clean_name, year)
         info["original_filename"] = filename
         info["parsed_title"] = clean_name
         if year:
             info["parsed_year"] = year
 
-        return [TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))])
 
     elif name == "rename_movie":
         filepath = arguments.get("filepath", "")
@@ -543,24 +711,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         file_path = Path(filepath)
         if not file_path.exists():
-            return [TextContent(type="text", text=json.dumps({
+            return log_response([TextContent(type="text", text=json.dumps({
                 "error": f"Файл не найден: {filepath}"
-            }, ensure_ascii=False, indent=2))]
+            }, ensure_ascii=False, indent=2))])
 
         # Получаем информацию о фильме
         filename = file_path.name
         clean_name = clean_movie_name(filename)
         year = extract_year(filename)
 
-        info = await fetch_movie_info(clean_name, year)
+        info = await fetch_movie_info_tmdb(clean_name, year)
 
         if "error" in info:
-            return [TextContent(type="text", text=json.dumps({
+            return log_response([TextContent(type="text", text=json.dumps({
                 "error": f"Не удалось найти информацию о фильме: {info['error']}",
                 "original_file": filename,
                 "parsed_title": clean_name,
                 "parsed_year": year
-            }, ensure_ascii=False, indent=2))]
+            }, ensure_ascii=False, indent=2))])
 
         # Формируем новое имя файла
         title = info.get("title", clean_name)
@@ -598,22 +766,22 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 result["status"] = "error"
                 result["error"] = str(e)
 
-        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
 
     elif name == "get_video_metadata":
         filepath = arguments.get("filepath", "")
 
         file_path = Path(filepath)
         if not file_path.exists():
-            return [TextContent(type="text", text=json.dumps({
+            return log_response([TextContent(type="text", text=json.dumps({
                 "error": f"Файл не найден: {filepath}"
-            }, ensure_ascii=False, indent=2))]
+            }, ensure_ascii=False, indent=2))])
 
         metadata = get_video_metadata(filepath)
-        return [TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, indent=2))]
+        return log_response([TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, indent=2))])
 
     else:
-        return [TextContent(type="text", text=f"Неизвестный инструмент: {name}")]
+        return log_response([TextContent(type="text", text=f"Неизвестный инструмент: {name}")])
 
 
 async def main():

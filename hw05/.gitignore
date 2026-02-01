@@ -11,3 +11,6 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# Logs
+mcp-videolibrary/mcp_server.log
