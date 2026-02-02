@@ -75,6 +75,9 @@ OMDB_API_KEY = os.environ.get("OMDB_API_KEY", "")
 # TMDb API ключ (бесплатный, получить на https://www.themoviedb.org/settings/api)
 TMDB_API_KEY = CONFIG.get("tmdb_api_key") or os.environ.get("TMDB_API_KEY", "")
 
+# Kinopoisk API ключ (получить на https://kinopoiskapiunofficial.tech/)
+KINOPOISK_API_KEY = CONFIG.get("kinopoisk_api_key") or os.environ.get("KINOPOISK_API_KEY", "")
+
 # Настройка TMDb API
 if TMDB_API_KEY:
     tmdb.API_KEY = TMDB_API_KEY
@@ -92,6 +95,46 @@ class VideoFile:
     folder: str
 
 
+def transliterate_to_cyrillic(text: str) -> str:
+    """Транслитерирует текст с латиницы на кириллицу (обратная транслитерация)."""
+    # Словарь для транслитерации латиницы → кириллица
+    # Включает множественные варианты написания одной буквы
+    translit_map = {
+        # Длинные комбинации (обрабатываем первыми)
+        'shch': 'щ', 'shh': 'щ', 'sch': 'щ', 'shhh': 'щ',
+        'zh': 'ж', 'ch': 'ч', 'sh': 'ш', 'yo': 'ё',
+        'yu': 'ю', 'ya': 'я', 'kh': 'х', 'ts': 'ц',
+        'ju': 'ю', 'ja': 'я', 'je': 'е', 'jo': 'ё',
+        'eh': 'э', 'yy': 'ы', 'yi': 'ы', 'yh': 'ы',
+        # Одиночные буквы
+        'a': 'а', 'b': 'б', 'v': 'в', 'g': 'г', 'd': 'д',
+        'e': 'е', 'z': 'з', 'i': 'и', 'j': 'й', 'k': 'к',
+        'l': 'л', 'm': 'м', 'n': 'н', 'o': 'о', 'p': 'п',
+        'r': 'р', 's': 'с', 't': 'т', 'u': 'у', 'f': 'ф',
+        'h': 'х', 'c': 'ц', 'y': 'ы', 'w': 'в', 'x': 'кс',
+        'q': 'к', "'": '', '"': ''
+    }
+
+    result = text.lower()
+
+    # Сначала заменяем длинные комбинации (2-4 символа), потом короткие
+    for lat, cyr in sorted(translit_map.items(), key=lambda x: -len(x[0])):
+        result = result.replace(lat, cyr)
+
+    # Специальные замены для частых ошибок ПОСЛЕ общей транслитерации
+    # (когда текст уже в кириллице, но с ошибками)
+    post_translit_fixes = {
+        'стракса': 'страха',  # xa -> ха (не кса)
+        'присыцтвие': 'присутствие',  # правильное написание
+        'осеро': 'озеро',  # правильное написание
+    }
+
+    for wrong, correct in post_translit_fixes.items():
+        result = result.replace(wrong, correct)
+
+    return result
+
+
 def sanitize_filename(name: str) -> str:
     """Убирает недопустимые символы из имени файла."""
     # Символы, запрещённые в Windows
@@ -107,8 +150,42 @@ def clean_movie_name(filename: str) -> str:
     """Очищает название файла для поиска в TMDb."""
     name = Path(filename).stem
 
-    # Убираем год в скобках или квадратных скобках СНАЧАЛА
+    # ШАГ 0: Убираем номера в начале файла (например, "01.", "02.", "1 -", "2.")
+    # Сначала убираем префиксы с решеткой: "5#Name" → "Name", "#01 Name" → "Name"
+    name = re.sub(r'^\d+#', '', name)  # Убираем "5#"
+    name = re.sub(r'^#\d+[\s._-]+', '', name)  # Убираем "#01 "
+    # Затем убираем числовые префиксы, КРОМЕ случаев типа "1 Harry Potter" (для сохранения порядка серий)
+    if not re.match(r'^\d+ [A-ZА-ЯЁ]', name):
+        name = re.sub(r'^\d+[\s._-]+', '', name)
+
+    # ШАГ 1: Убираем год в скобках или квадратных скобках
     name = re.sub(r"[\(\[]\d{4}[\)\]]", "", name)
+
+    # ШАГ 2: Убираем оставшиеся круглые скобки и их содержимое, заменяя на пробел
+    # Это предотвращает слипание слов (напр. "Prometheus(Extended)BDRip" → "Prometheus BDRip")
+    name = re.sub(r'\([^)]*\)', " ", name)
+
+    # ШАГ 3: КРИТИЧНО - Отбрасываем всё после разрешения/качества/кодека
+    # После этих меток обычно идёт только мусор (группы релизов и т.д.)
+    # ВАЖНО: Ищем САМОЕ РАННЕЕ вхождение среди всех паттернов
+    cutoff_patterns = [
+        r'[._\s](1080p|720p|480p|2160p|4k|UHD)',
+        r'[._\s](HDRip|BDRip|BluRay|WEB-?DL(?:Rip)?|DVDRip|HDTV|WEBRip|BDRemux|REMUX)',
+        r'[._\s](x264|x265|HEVC|AVC|h264|h265|XviD|DivX)',  # Кодеки
+        r'[._\s](AAC|DTS|AC3|DD5)',  # Аудио кодеки
+    ]
+    earliest_match = None
+    earliest_pos = len(name)
+
+    for pattern in cutoff_patterns:
+        match = re.search(pattern, name, flags=re.IGNORECASE)
+        if match and match.start() < earliest_pos:
+            earliest_match = match
+            earliest_pos = match.start()
+
+    if earliest_match:
+        # Обрезаем всё начиная с разделителя перед паттерном
+        name = name[:earliest_match.start()]
 
     # Убираем всё в квадратных скобках (часто там теги)
     name = re.sub(r'\[.*?\]', "", name)
@@ -360,12 +437,12 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
 
     def _fetch():
         try:
-            # Попытка 1: Поиск с полным названием
+            # Попытка 1: Поиск с полным названием (поиск на английском, но потом получим русское название)
             search = tmdb.Search()
             if year:
-                search.movie(query=title, year=year)
+                search.movie(query=title, year=year, language='en-US')
             else:
-                search.movie(query=title)
+                search.movie(query=title, language='en-US')
 
             # Попытка 2: Если не нашли, попробуем упростить название (первые 3 слова)
             if not search.results and len(title.split()) > 3:
@@ -391,6 +468,17 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
                 logger.info(f"TMDb: не нашли, пробуем '{first_word}' + {year}")
                 search.movie(query=first_word, year=year)
 
+            # Попытка 5: Транслитерация (латиница → кириллица)
+            if not search.results:
+                # Проверяем, есть ли в названии латинские буквы
+                if any(c.isascii() and c.isalpha() for c in title):
+                    translit_title = transliterate_to_cyrillic(title)
+                    logger.info(f"TMDb: не нашли, пробуем транслитерацию '{translit_title}'")
+                    if year:
+                        search.movie(query=translit_title, year=year)
+                    else:
+                        search.movie(query=translit_title)
+
             if not search.results:
                 return {"error": f"Фильм '{title}' не найден в TMDb"}
 
@@ -398,9 +486,9 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
             movie_data = search.results[0]
             movie_id = movie_data['id']
 
-            # Получаем детальную информацию о фильме
+            # Получаем детальную информацию о фильме (с русским языком)
             movie = tmdb.Movies(movie_id)
-            movie_info = movie.info()
+            movie_info = movie.info(language='ru-RU')
 
             # Получаем информацию о актерах и режиссерах
             credits = movie.credits()
@@ -447,6 +535,207 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
 
     # Выполняем синхронную функцию в отдельном потоке
     return await asyncio.to_thread(_fetch)
+
+
+async def fetch_tv_show_info_tmdb(title: str, year: Optional[int] = None) -> dict:
+    """Получает информацию о ТВ-сериале из TMDb API."""
+    if not TMDB_API_KEY:
+        return {"error": "TMDB_API_KEY не установлен"}
+
+    def _fetch():
+        try:
+            # Поиск TV series (не movie!)
+            search = tmdb.Search()
+            if year:
+                search.tv(query=title, first_air_date_year=year, language='en-US')
+            else:
+                search.tv(query=title, language='en-US')
+
+            # Если не нашли - упрощаем название
+            if not search.results and len(title.split()) > 2:
+                simplified_title = ' '.join(title.split()[:2])
+                logger.info(f"TMDb TV: не нашли '{title}', пробуем '{simplified_title}'")
+                if year:
+                    search.tv(query=simplified_title, first_air_date_year=year)
+                else:
+                    search.tv(query=simplified_title)
+
+            # Попытка транслитерации
+            if not search.results and any(c.isascii() and c.isalpha() for c in title):
+                translit_title = transliterate_to_cyrillic(title)
+                logger.info(f"TMDb TV: не нашли, пробуем транслитерацию '{translit_title}'")
+                if year:
+                    search.tv(query=translit_title, first_air_date_year=year)
+                else:
+                    search.tv(query=translit_title)
+
+            if not search.results:
+                return {"error": f"Сериал '{title}' не найден в TMDb"}
+
+            # Берем первый результат
+            tv_data = search.results[0]
+            tv_id = tv_data['id']
+
+            # Получаем детальную информацию (с русским языком)
+            tv = tmdb.TV(tv_id)
+            tv_info = tv.info(language='ru-RU')
+
+            # Формируем ответ
+            return {
+                "title": tv_info.get('name', 'N/A'),
+                "year": tv_info.get('first_air_date', 'N/A')[:4] if tv_info.get('first_air_date') else 'N/A',
+                "type": "tv",
+            }
+        except Exception as e:
+            return {"error": f"Ошибка при запросе к TMDb TV: {str(e)}"}
+
+    return await asyncio.to_thread(_fetch)
+
+
+async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> dict:
+    """Получает информацию о фильме из Kinopoisk API."""
+    if not KINOPOISK_API_KEY:
+        return {"error": "KINOPOISK_API_KEY не установлен. Получите бесплатный ключ на https://kinopoiskapiunofficial.tech/"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            # Шаг 1: Поиск фильма по названию
+            search_url = "https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword"
+            headers = {"X-API-KEY": KINOPOISK_API_KEY}
+            params = {"keyword": title}
+
+            logger.info(f"Kinopoisk: ищем '{title}'" + (f" ({year})" if year else ""))
+
+            response = await client.get(search_url, headers=headers, params=params)
+            response.raise_for_status()
+            search_data = response.json()
+
+            films = search_data.get("films", [])
+            if not films:
+                # Попытка 2: Упрощаем название (первые 3 слова)
+                if len(title.split()) > 3:
+                    simplified_title = ' '.join(title.split()[:3])
+                    logger.info(f"Kinopoisk: не нашли '{title}', пробуем '{simplified_title}'")
+                    params = {"keyword": simplified_title}
+                    response = await client.get(search_url, headers=headers, params=params)
+                    response.raise_for_status()
+                    search_data = response.json()
+                    films = search_data.get("films", [])
+
+                # Попытка 3: Еще проще (первые 2 слова)
+                if not films and len(title.split()) > 2:
+                    simplified_title = ' '.join(title.split()[:2])
+                    logger.info(f"Kinopoisk: не нашли, пробуем '{simplified_title}'")
+                    params = {"keyword": simplified_title}
+                    response = await client.get(search_url, headers=headers, params=params)
+                    response.raise_for_status()
+                    search_data = response.json()
+                    films = search_data.get("films", [])
+
+                # Попытка 4: Только первое слово
+                if not films and len(title.split()) > 1:
+                    first_word = title.split()[0]
+                    logger.info(f"Kinopoisk: не нашли, пробуем '{first_word}'")
+                    params = {"keyword": first_word}
+                    response = await client.get(search_url, headers=headers, params=params)
+                    response.raise_for_status()
+                    search_data = response.json()
+                    films = search_data.get("films", [])
+
+                # Попытка 5: Транслитерация (латиница → кириллица)
+                if not films and any(c.isascii() and c.isalpha() for c in title):
+                    translit_title = transliterate_to_cyrillic(title)
+                    logger.info(f"Kinopoisk: не нашли, пробуем транслитерацию '{translit_title}'")
+                    params = {"keyword": translit_title}
+                    response = await client.get(search_url, headers=headers, params=params)
+                    response.raise_for_status()
+                    search_data = response.json()
+                    films = search_data.get("films", [])
+
+            if not films:
+                return {"error": f"Фильм '{title}' не найден на Кинопоиске"}
+
+            # Фильтруем по году, если указан
+            best_match = None
+            if year:
+                for film in films:
+                    film_year = film.get("year")
+                    if film_year and str(film_year) == str(year):
+                        best_match = film
+                        break
+
+            # Если не нашли по году или год не указан, берем первый результат
+            if not best_match:
+                best_match = films[0]
+
+            kinopoisk_id = best_match.get("filmId")
+            if not kinopoisk_id:
+                return {"error": "Не удалось получить ID фильма"}
+
+            # Шаг 2: Получаем подробную информацию о фильме
+            details_url = f"https://kinopoiskapiunofficial.tech/api/v2.2/films/{kinopoisk_id}"
+            response = await client.get(details_url, headers=headers)
+            response.raise_for_status()
+            movie_info = response.json()
+
+            # Извлекаем информацию
+            russian_title = movie_info.get("nameRu") or movie_info.get("nameOriginal", "N/A")
+            original_title = movie_info.get("nameOriginal", "N/A")
+            movie_year = str(movie_info.get("year", "N/A"))
+
+            # Получаем режиссёров и актёров из staff
+            staff_url = f"https://kinopoiskapiunofficial.tech/api/v1/staff"
+            response = await client.get(staff_url, headers=headers, params={"filmId": kinopoisk_id})
+            response.raise_for_status()
+            staff_data = response.json()
+
+            directors = [person["nameRu"] or person.get("nameEn", "") for person in staff_data if person.get("professionKey") == "DIRECTOR"]
+            actors = [person["nameRu"] or person.get("nameEn", "") for person in staff_data if person.get("professionKey") == "ACTOR"][:5]
+
+            director_str = ', '.join(directors[:3]) if directors else "N/A"
+            actor_str = ', '.join(actors) if actors else "N/A"
+
+            # Извлекаем жанры
+            genres = [genre["genre"] for genre in movie_info.get("genres", [])]
+            genre_str = ', '.join(genres) if genres else "N/A"
+
+            # Извлекаем страны
+            countries = [country["country"] for country in movie_info.get("countries", [])]
+            country_str = ', '.join(countries) if countries else "N/A"
+
+            # Формируем ответ в формате, совместимом с нашим API
+            return {
+                "title": russian_title,  # Русское название
+                "original_title": original_title,  # Оригинальное название
+                "year": movie_year,
+                "rated": "N/A",
+                "released": str(movie_info.get("premiereRu", "N/A")),
+                "runtime": f"{movie_info.get('filmLength', 'N/A')} min" if movie_info.get('filmLength') else 'N/A',
+                "genre": genre_str,
+                "director": director_str,
+                "actors": actor_str,
+                "plot": movie_info.get("description", "N/A"),
+                "language": "N/A",
+                "country": country_str,
+                "awards": "N/A",
+                "poster": movie_info.get("posterUrl", "N/A"),
+                "imdb_rating": str(movie_info.get("ratingImdb", "N/A")),
+                "kinopoisk_rating": str(movie_info.get("ratingKinopoisk", "N/A")),
+                "imdb_votes": "N/A",
+                "imdb_id": movie_info.get("imdbId", "N/A"),
+                "kinopoisk_id": str(kinopoisk_id),
+                "type": "movie",
+                "box_office": "N/A"
+            }
+        except httpx.HTTPStatusError as e:
+            logger.warning(f"HTTP ошибка Кинопоиска: {e.response.status_code}")
+            if e.response.status_code == 402:
+                return {"error": "Превышен лимит запросов к API Кинопоиска (500/день на бесплатном тарифе)"}
+            return {"error": f"Ошибка HTTP при запросе к Кинопоиску: {e.response.status_code}"}
+        except Exception as e:
+            # Короткое логирование без traceback для чистоты лога
+            logger.warning(f"Кинопоиск недоступен: {type(e).__name__}")
+            return {"error": f"Кинопоиск недоступен: {type(e).__name__}"}
 
 
 @server.list_tools()
@@ -577,23 +866,48 @@ async def list_tools() -> list[Tool]:
     ]
 
 
-@server.call_tool()
 def log_response(result: list[TextContent]) -> list[TextContent]:
     """Логирует ответ сервера."""
-    logger.info(f"=== Ответ Claude ===")
+    logger.info("=" * 100)
+    logger.info("📤 ИСХОДЯЩИЙ ОТВЕТ ОТ MCP СЕРВЕРА")
+    logger.info("=" * 100)
+    
     for i, content in enumerate(result):
-        text_preview = content.text[:500] + "..." if len(content.text) > 500 else content.text
-        logger.info(f"Результат [{i}]: {text_preview}")
+        logger.info(f"📦 Результат [{i + 1}]:")
+        
+        # Если результат большой, показываем только первые строки
+        text = content.text
+        if len(text) > 1000:
+            lines = text.split('\n')
+            preview_lines = lines[:15]
+            remaining_lines = len(lines) - 15
+            
+            logger.info("   " + "\n   ".join(preview_lines))
+            if remaining_lines > 0:
+                logger.info(f"   ... (еще {remaining_lines} строк, всего {len(text)} символов)")
+        else:
+            # Для коротких результатов выводим всё
+            for line in text.split('\n'):
+                logger.info(f"   {line}")
+    
+    logger.info("=" * 100)
+    logger.info("")
     return result
 
 
+@server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Обрабатывает вызовы инструментов."""
 
-    # Логирование входящего запроса
-    logger.info(f"=== Запрос от Claude ===")
-    logger.info(f"Инструмент: {name}")
-    logger.info(f"Аргументы: {json.dumps(arguments, ensure_ascii=False, indent=2)}")
+    # Красивое логирование входящего запроса
+    logger.info("=" * 100)
+    logger.info("🤖 ВХОДЯЩИЙ ЗАПРОС ОТ AI АГЕНТА (CLAUDE)")
+    logger.info("=" * 100)
+    logger.info(f"📥 Инструмент: {name}")
+    logger.info(f"📋 Аргументы:")
+    for key, value in arguments.items():
+        logger.info(f"   • {key}: {value}")
+    logger.info("-" * 100)
 
     if name == "list_movies":
         limit = arguments.get("limit", 0)
