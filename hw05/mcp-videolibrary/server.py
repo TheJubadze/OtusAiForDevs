@@ -12,6 +12,7 @@ import subprocess
 import sys
 import io
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, asdict
@@ -234,9 +235,11 @@ def extract_year(filename: str) -> Optional[int]:
 
 def scan_folder(folder_path: Path, category: str) -> list[VideoFile]:
     """Сканирует папку и возвращает список видеофайлов."""
+    logger.info(f"   📂 Сканирование {category}: {folder_path}")
     videos = []
 
     if not folder_path.exists():
+        logger.info(f"   ⚠️  Папка не найдена")
         return videos
 
     for root, dirs, files in os.walk(folder_path):
@@ -256,6 +259,7 @@ def scan_folder(folder_path: Path, category: str) -> list[VideoFile]:
                 except OSError:
                     continue
 
+    logger.info(f"   📊 Найдено: {len(videos)} файлов")
     return videos
 
 
@@ -387,7 +391,10 @@ def get_video_metadata(filepath: str) -> dict:
 
 async def fetch_movie_info(title: str, year: Optional[int] = None) -> dict:
     """Получает информацию о фильме из OMDb API."""
+    logger.info(f"   🌐 OMDb API → \"{title}\"" + (f" ({year})" if year else ""))
+
     if not OMDB_API_KEY:
+        logger.info(f"   ❌ OMDb: ключ не настроен")
         return {"error": "OMDB_API_KEY не установлен. Получите бесплатный ключ на http://www.omdbapi.com/apikey.aspx"}
 
     params = {
@@ -404,8 +411,10 @@ async def fetch_movie_info(title: str, year: Optional[int] = None) -> dict:
             data = response.json()
 
             if data.get("Response") == "False":
+                logger.info(f"   ❌ OMDb: {data.get('Error', 'не найдено')}")
                 return {"error": data.get("Error", "Фильм не найден")}
 
+            logger.info(f"   ✅ OMDb: {data.get('Title')} ({data.get('Year')})")
             return {
                 "title": data.get("Title"),
                 "year": data.get("Year"),
@@ -427,17 +436,21 @@ async def fetch_movie_info(title: str, year: Optional[int] = None) -> dict:
                 "box_office": data.get("BoxOffice")
             }
         except Exception as e:
+            logger.info(f"   ❌ OMDb: {e}")
             return {"error": f"Ошибка при запросе к OMDb: {str(e)}"}
 
 
 async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
     """Получает информацию о фильме из TMDb API."""
+    logger.info(f"   🌐 TMDb → \"{title}\"" + (f" ({year})" if year else ""))
+
     if not TMDB_API_KEY:
+        logger.info(f"   ❌ TMDb: ключ не настроен")
         return {"error": "TMDB_API_KEY не установлен. Получите бесплатный ключ на https://www.themoviedb.org/settings/api"}
 
     def _fetch():
         try:
-            # Попытка 1: Поиск с полным названием (поиск на английском, но потом получим русское название)
+            # Попытка 1: Поиск с полным названием
             search = tmdb.Search()
             if year:
                 search.movie(query=title, year=year, language='en-US')
@@ -447,7 +460,7 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
             # Попытка 2: Если не нашли, попробуем упростить название (первые 3 слова)
             if not search.results and len(title.split()) > 3:
                 simplified_title = ' '.join(title.split()[:3])
-                logger.info(f"TMDb: не нашли '{title}', пробуем '{simplified_title}'")
+                logger.info(f"   ↳ не нашли, пробуем \"{simplified_title}\"")
                 if year:
                     search.movie(query=simplified_title, year=year)
                 else:
@@ -456,7 +469,7 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
             # Попытка 3: Еще проще - только первые 2 слова
             if not search.results and len(title.split()) > 2:
                 simplified_title = ' '.join(title.split()[:2])
-                logger.info(f"TMDb: не нашли, пробуем '{simplified_title}'")
+                logger.info(f"   ↳ не нашли, пробуем \"{simplified_title}\"")
                 if year:
                     search.movie(query=simplified_title, year=year)
                 else:
@@ -465,7 +478,7 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
             # Попытка 4: Самое простое - только ПЕРВОЕ слово + год
             if not search.results and len(title.split()) > 1 and year:
                 first_word = title.split()[0]
-                logger.info(f"TMDb: не нашли, пробуем '{first_word}' + {year}")
+                logger.info(f"   ↳ не нашли, пробуем \"{first_word}\" + {year}")
                 search.movie(query=first_word, year=year)
 
             # Попытка 5: Транслитерация (латиница → кириллица)
@@ -473,7 +486,7 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
                 # Проверяем, есть ли в названии латинские буквы
                 if any(c.isascii() and c.isalpha() for c in title):
                     translit_title = transliterate_to_cyrillic(title)
-                    logger.info(f"TMDb: не нашли, пробуем транслитерацию '{translit_title}'")
+                    logger.info(f"   ↳ транслитерация: \"{translit_title}\"")
                     if year:
                         search.movie(query=translit_title, year=year)
                     else:
@@ -534,12 +547,22 @@ async def fetch_movie_info_tmdb(title: str, year: Optional[int] = None) -> dict:
             return {"error": f"Ошибка при запросе к TMDb: {str(e)}"}
 
     # Выполняем синхронную функцию в отдельном потоке
-    return await asyncio.to_thread(_fetch)
+    result = await asyncio.to_thread(_fetch)
+
+    if "error" in result:
+        logger.info(f"   ❌ TMDb: {result['error']}")
+    else:
+        logger.info(f"   ✅ TMDb: {result.get('title')} ({result.get('year')})")
+
+    return result
 
 
 async def fetch_tv_show_info_tmdb(title: str, year: Optional[int] = None) -> dict:
     """Получает информацию о ТВ-сериале из TMDb API."""
+    logger.info(f"   🌐 TMDb TV → \"{title}\"" + (f" ({year})" if year else ""))
+
     if not TMDB_API_KEY:
+        logger.info(f"   ❌ TMDb TV: ключ не настроен")
         return {"error": "TMDB_API_KEY не установлен"}
 
     def _fetch():
@@ -554,7 +577,7 @@ async def fetch_tv_show_info_tmdb(title: str, year: Optional[int] = None) -> dic
             # Если не нашли - упрощаем название
             if not search.results and len(title.split()) > 2:
                 simplified_title = ' '.join(title.split()[:2])
-                logger.info(f"TMDb TV: не нашли '{title}', пробуем '{simplified_title}'")
+                logger.info(f"   ↳ не нашли, пробуем \"{simplified_title}\"")
                 if year:
                     search.tv(query=simplified_title, first_air_date_year=year)
                 else:
@@ -563,7 +586,7 @@ async def fetch_tv_show_info_tmdb(title: str, year: Optional[int] = None) -> dic
             # Попытка транслитерации
             if not search.results and any(c.isascii() and c.isalpha() for c in title):
                 translit_title = transliterate_to_cyrillic(title)
-                logger.info(f"TMDb TV: не нашли, пробуем транслитерацию '{translit_title}'")
+                logger.info(f"   ↳ транслитерация: \"{translit_title}\"")
                 if year:
                     search.tv(query=translit_title, first_air_date_year=year)
                 else:
@@ -589,12 +612,22 @@ async def fetch_tv_show_info_tmdb(title: str, year: Optional[int] = None) -> dic
         except Exception as e:
             return {"error": f"Ошибка при запросе к TMDb TV: {str(e)}"}
 
-    return await asyncio.to_thread(_fetch)
+    result = await asyncio.to_thread(_fetch)
+
+    if "error" in result:
+        logger.info(f"   ❌ TMDb TV: {result['error']}")
+    else:
+        logger.info(f"   ✅ TMDb TV: {result.get('title')} ({result.get('year')})")
+
+    return result
 
 
 async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> dict:
     """Получает информацию о фильме из Kinopoisk API."""
+    logger.info(f"   🌐 Kinopoisk → \"{title}\"" + (f" ({year})" if year else ""))
+
     if not KINOPOISK_API_KEY:
+        logger.info(f"   ❌ Kinopoisk: ключ не настроен")
         return {"error": "KINOPOISK_API_KEY не установлен. Получите бесплатный ключ на https://kinopoiskapiunofficial.tech/"}
 
     async with httpx.AsyncClient() as client:
@@ -603,8 +636,6 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
             search_url = "https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword"
             headers = {"X-API-KEY": KINOPOISK_API_KEY}
             params = {"keyword": title}
-
-            logger.info(f"Kinopoisk: ищем '{title}'" + (f" ({year})" if year else ""))
 
             response = await client.get(search_url, headers=headers, params=params)
             response.raise_for_status()
@@ -615,7 +646,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                 # Попытка 2: Упрощаем название (первые 3 слова)
                 if len(title.split()) > 3:
                     simplified_title = ' '.join(title.split()[:3])
-                    logger.info(f"Kinopoisk: не нашли '{title}', пробуем '{simplified_title}'")
+                    logger.info(f"   ↳ не нашли, пробуем \"{simplified_title}\"")
                     params = {"keyword": simplified_title}
                     response = await client.get(search_url, headers=headers, params=params)
                     response.raise_for_status()
@@ -625,7 +656,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                 # Попытка 3: Еще проще (первые 2 слова)
                 if not films and len(title.split()) > 2:
                     simplified_title = ' '.join(title.split()[:2])
-                    logger.info(f"Kinopoisk: не нашли, пробуем '{simplified_title}'")
+                    logger.info(f"   ↳ не нашли, пробуем \"{simplified_title}\"")
                     params = {"keyword": simplified_title}
                     response = await client.get(search_url, headers=headers, params=params)
                     response.raise_for_status()
@@ -635,7 +666,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                 # Попытка 4: Только первое слово
                 if not films and len(title.split()) > 1:
                     first_word = title.split()[0]
-                    logger.info(f"Kinopoisk: не нашли, пробуем '{first_word}'")
+                    logger.info(f"   ↳ не нашли, пробуем \"{first_word}\"")
                     params = {"keyword": first_word}
                     response = await client.get(search_url, headers=headers, params=params)
                     response.raise_for_status()
@@ -645,7 +676,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                 # Попытка 5: Транслитерация (латиница → кириллица)
                 if not films and any(c.isascii() and c.isalpha() for c in title):
                     translit_title = transliterate_to_cyrillic(title)
-                    logger.info(f"Kinopoisk: не нашли, пробуем транслитерацию '{translit_title}'")
+                    logger.info(f"   ↳ транслитерация: \"{translit_title}\"")
                     params = {"keyword": translit_title}
                     response = await client.get(search_url, headers=headers, params=params)
                     response.raise_for_status()
@@ -653,6 +684,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                     films = search_data.get("films", [])
 
             if not films:
+                logger.info(f"   ❌ Kinopoisk: фильм не найден")
                 return {"error": f"Фильм '{title}' не найден на Кинопоиске"}
 
             # Фильтруем по году, если указан
@@ -670,6 +702,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
 
             kinopoisk_id = best_match.get("filmId")
             if not kinopoisk_id:
+                logger.info(f"   ❌ Kinopoisk: не удалось получить ID")
                 return {"error": "Не удалось получить ID фильма"}
 
             # Шаг 2: Получаем подробную информацию о фильме
@@ -704,6 +737,7 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
             country_str = ', '.join(countries) if countries else "N/A"
 
             # Формируем ответ в формате, совместимом с нашим API
+            logger.info(f"   ✅ Kinopoisk: {russian_title} ({movie_year})")
             return {
                 "title": russian_title,  # Русское название
                 "original_title": original_title,  # Оригинальное название
@@ -728,13 +762,12 @@ async def fetch_movie_info_kinopoisk(title: str, year: Optional[int] = None) -> 
                 "box_office": "N/A"
             }
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP ошибка Кинопоиска: {e.response.status_code}")
+            logger.warning(f"   ❌ Kinopoisk HTTP {e.response.status_code}")
             if e.response.status_code == 402:
                 return {"error": "Превышен лимит запросов к API Кинопоиска (500/день на бесплатном тарифе)"}
             return {"error": f"Ошибка HTTP при запросе к Кинопоиску: {e.response.status_code}"}
         except Exception as e:
-            # Короткое логирование без traceback для чистоты лога
-            logger.warning(f"Кинопоиск недоступен: {type(e).__name__}")
+            logger.warning(f"   ❌ Kinopoisk: {type(e).__name__}")
             return {"error": f"Кинопоиск недоступен: {type(e).__name__}"}
 
 
@@ -866,22 +899,22 @@ async def list_tools() -> list[Tool]:
     ]
 
 
-def log_response(result: list[TextContent]) -> list[TextContent]:
+def log_response(result: list[TextContent], elapsed: float = 0) -> list[TextContent]:
     """Логирует ответ сервера."""
+    logger.info("-" * 100)
+    logger.info(f"📤 ОТВЕТ (⏱  {elapsed:.2f}с)")
     logger.info("=" * 100)
-    logger.info("📤 ИСХОДЯЩИЙ ОТВЕТ ОТ MCP СЕРВЕРА")
-    logger.info("=" * 100)
-    
+
     for i, content in enumerate(result):
         logger.info(f"📦 Результат [{i + 1}]:")
-        
+
         # Если результат большой, показываем только первые строки
         text = content.text
         if len(text) > 1000:
             lines = text.split('\n')
             preview_lines = lines[:15]
             remaining_lines = len(lines) - 15
-            
+
             logger.info("   " + "\n   ".join(preview_lines))
             if remaining_lines > 0:
                 logger.info(f"   ... (еще {remaining_lines} строк, всего {len(text)} символов)")
@@ -889,7 +922,7 @@ def log_response(result: list[TextContent]) -> list[TextContent]:
             # Для коротких результатов выводим всё
             for line in text.split('\n'):
                 logger.info(f"   {line}")
-    
+
     logger.info("=" * 100)
     logger.info("")
     return result
@@ -898,8 +931,10 @@ def log_response(result: list[TextContent]) -> list[TextContent]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Обрабатывает вызовы инструментов."""
+    start_time = time.perf_counter()
 
-    # Красивое логирование входящего запроса
+    # ──── ВХОДЯЩИЙ ЗАПРОС ────
+    logger.info("")
     logger.info("=" * 100)
     logger.info("🤖 ВХОДЯЩИЙ ЗАПРОС ОТ AI АГЕНТА (CLAUDE)")
     logger.info("=" * 100)
@@ -908,6 +943,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     for key, value in arguments.items():
         logger.info(f"   • {key}: {value}")
     logger.info("-" * 100)
+    logger.info("⚙️  Обработка:")
+
+    # ──── ДИСПЕТЧЕР ТУЛОВ ────
+    response = None
 
     if name == "list_movies":
         limit = arguments.get("limit", 0)
@@ -916,12 +955,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         if limit > 0:
             videos = videos[:limit]
+            logger.info(f"   ✂️  Лимит: показано {limit}")
 
-        result = {
+        response = [TextContent(type="text", text=json.dumps({
             "count": len(videos),
             "movies": [asdict(v) for v in videos]
-        }
-        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
+        }, ensure_ascii=False, indent=2))]
 
     elif name == "list_cartoons":
         limit = arguments.get("limit", 0)
@@ -930,23 +969,24 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         if limit > 0:
             videos = videos[:limit]
+            logger.info(f"   ✂️  Лимит: показано {limit}")
 
-        result = {
+        response = [TextContent(type="text", text=json.dumps({
             "count": len(videos),
             "cartoons": [asdict(v) for v in videos]
-        }
-        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
+        }, ensure_ascii=False, indent=2))]
 
     elif name == "get_movie_info":
         title = arguments.get("title", "")
         year = arguments.get("year")
 
         info = await fetch_movie_info_tmdb(title, year)
-        return log_response([TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))])
+        response = [TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))]
 
     elif name == "search_library":
         query = arguments.get("query", "").lower()
         category = arguments.get("category", "all")
+        logger.info(f"   🔍 Запрос: \"{query}\" | Категория: {category}")
 
         results = []
 
@@ -960,12 +1000,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             cartoons = scan_folder(cartoons_path, "cartoons")
             results.extend([v for v in cartoons if query in v.name.lower()])
 
-        result = {
+        logger.info(f"   🎯 Совпадений: {len(results)}")
+        response = [TextContent(type="text", text=json.dumps({
             "query": query,
             "count": len(results),
             "results": [asdict(v) for v in results]
-        }
-        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
+        }, ensure_ascii=False, indent=2))]
 
     elif name == "get_library_stats":
         movies_path = Path(VIDEOS_ROOT) / MOVIES_FOLDER
@@ -986,7 +1026,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         for v in cartoons:
             cartoon_formats[v.extension] = cartoon_formats.get(v.extension, 0) + 1
 
-        result = {
+        logger.info(f"   📊 Фильмы:   {len(movies)} файлов | {round(total_movies_size / 1024, 2)} ГБ")
+        logger.info(f"   📊 Мультики: {len(cartoons)} файлов | {round(total_cartoons_size / 1024, 2)} ГБ")
+
+        response = [TextContent(type="text", text=json.dumps({
             "movies": {
                 "count": len(movies),
                 "total_size_gb": round(total_movies_size / 1024, 2),
@@ -1001,8 +1044,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "count": len(movies) + len(cartoons),
                 "total_size_gb": round((total_movies_size + total_cartoons_size) / 1024, 2)
             }
-        }
-        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
+        }, ensure_ascii=False, indent=2))]
 
     elif name == "get_movie_info_by_file":
         filename = arguments.get("filename", "")
@@ -1010,6 +1052,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         # Очищаем название файла
         clean_name = clean_movie_name(filename)
         year = extract_year(filename)
+        logger.info(f"   🧹 Очищенное имя: \"{clean_name}\"  |  📅 Год: {year or 'не найден'}")
 
         info = await fetch_movie_info_tmdb(clean_name, year)
         info["original_filename"] = filename
@@ -1017,7 +1060,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         if year:
             info["parsed_year"] = year
 
-        return log_response([TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))])
+        response = [TextContent(type="text", text=json.dumps(info, ensure_ascii=False, indent=2))]
 
     elif name == "rename_movie":
         filepath = arguments.get("filepath", "")
@@ -1025,81 +1068,112 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         file_path = Path(filepath)
         if not file_path.exists():
-            return log_response([TextContent(type="text", text=json.dumps({
+            logger.info(f"   ❌ Файл не найден: {filepath}")
+            response = [TextContent(type="text", text=json.dumps({
                 "error": f"Файл не найден: {filepath}"
-            }, ensure_ascii=False, indent=2))])
-
-        # Получаем информацию о фильме
-        filename = file_path.name
-        clean_name = clean_movie_name(filename)
-        year = extract_year(filename)
-
-        info = await fetch_movie_info_tmdb(clean_name, year)
-
-        if "error" in info:
-            return log_response([TextContent(type="text", text=json.dumps({
-                "error": f"Не удалось найти информацию о фильме: {info['error']}",
-                "original_file": filename,
-                "parsed_title": clean_name,
-                "parsed_year": year
-            }, ensure_ascii=False, indent=2))])
-
-        # Формируем новое имя файла
-        title = info.get("title", clean_name)
-        movie_year = info.get("year", str(year) if year else "")
-        director = info.get("director", "Unknown")
-        extension = file_path.suffix
-
-        # Убираем "N/A" значения
-        if director == "N/A":
-            director = "Unknown"
-
-        new_filename = sanitize_filename(f"{title} ({movie_year}) - {director}{extension}")
-        new_filepath = file_path.parent / new_filename
-
-        result = {
-            "original_file": filename,
-            "new_file": new_filename,
-            "original_path": str(file_path),
-            "new_path": str(new_filepath),
-            "movie_info": {
-                "title": title,
-                "year": movie_year,
-                "director": director
-            },
-            "dry_run": dry_run
-        }
-
-        if dry_run:
-            result["status"] = "dry_run - файл не переименован"
+            }, ensure_ascii=False, indent=2))]
         else:
-            try:
-                file_path.rename(new_filepath)
-                result["status"] = "success"
-            except OSError as e:
-                result["status"] = "error"
-                result["error"] = str(e)
+            filename = file_path.name
+            clean_name = clean_movie_name(filename)
+            year = extract_year(filename)
+            logger.info(f"   📂 Файл: {filename}")
+            logger.info(f"   🧹 Очищенное имя: \"{clean_name}\"  |  📅 Год: {year or 'не найден'}")
 
-        return log_response([TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))])
+            info = await fetch_movie_info_tmdb(clean_name, year)
+
+            if "error" in info:
+                response = [TextContent(type="text", text=json.dumps({
+                    "error": f"Не удалось найти информацию о фильме: {info['error']}",
+                    "original_file": filename,
+                    "parsed_title": clean_name,
+                    "parsed_year": year
+                }, ensure_ascii=False, indent=2))]
+            else:
+                # Формируем новое имя файла
+                title = info.get("title", clean_name)
+                movie_year = info.get("year", str(year) if year else "")
+                director = info.get("director", "Unknown")
+                extension = file_path.suffix
+
+                if director == "N/A":
+                    director = "Unknown"
+
+                new_filename = sanitize_filename(f"{title} ({movie_year}) - {director}{extension}")
+                new_filepath = file_path.parent / new_filename
+                logger.info(f"   📝 Новое имя: {new_filename}")
+
+                rename_result = {
+                    "original_file": filename,
+                    "new_file": new_filename,
+                    "original_path": str(file_path),
+                    "new_path": str(new_filepath),
+                    "movie_info": {
+                        "title": title,
+                        "year": movie_year,
+                        "director": director
+                    },
+                    "dry_run": dry_run
+                }
+
+                if dry_run:
+                    rename_result["status"] = "dry_run - файл не переименован"
+                    logger.info(f"   ⏭️  dry_run — файл не переименован")
+                else:
+                    try:
+                        file_path.rename(new_filepath)
+                        rename_result["status"] = "success"
+                        logger.info(f"   ✅ Переименован успешно")
+                    except OSError as e:
+                        rename_result["status"] = "error"
+                        rename_result["error"] = str(e)
+                        logger.info(f"   ❌ Ошибка переименования: {e}")
+
+                response = [TextContent(type="text", text=json.dumps(rename_result, ensure_ascii=False, indent=2))]
 
     elif name == "get_video_metadata":
         filepath = arguments.get("filepath", "")
 
         file_path = Path(filepath)
         if not file_path.exists():
-            return log_response([TextContent(type="text", text=json.dumps({
+            logger.info(f"   ❌ Файл не найден: {filepath}")
+            response = [TextContent(type="text", text=json.dumps({
                 "error": f"Файл не найден: {filepath}"
-            }, ensure_ascii=False, indent=2))])
+            }, ensure_ascii=False, indent=2))]
+        else:
+            logger.info(f"   🔧 FFprobe: {file_path.name}")
+            metadata = get_video_metadata(filepath)
 
-        metadata = get_video_metadata(filepath)
-        return log_response([TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, indent=2))])
+            if "error" not in metadata:
+                video = metadata.get("video", {})
+                fmt = metadata.get("format", {})
+                logger.info(f"   ✅ {video.get('resolution', '?')} | {video.get('codec_short', '?')} | {fmt.get('duration', '?')} | {video.get('quality', '?')}")
+            else:
+                logger.info(f"   ❌ FFprobe: {metadata['error']}")
+
+            response = [TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, indent=2))]
 
     else:
-        return log_response([TextContent(type="text", text=f"Неизвестный инструмент: {name}")])
+        logger.info(f"   ❌ Неизвестный инструмент: {name}")
+        response = [TextContent(type="text", text=f"Неизвестный инструмент: {name}")]
+
+    elapsed = time.perf_counter() - start_time
+    return log_response(response, elapsed)
 
 
 async def main():
     """Запуск MCP сервера."""
+    logger.info("")
+    logger.info("=" * 100)
+    logger.info("🚀 MCP СЕРВЕР 'videolibrary' ЗАПУЩЕН")
+    logger.info("=" * 100)
+    logger.info(f"   📂 Фильмы:    {Path(VIDEOS_ROOT) / MOVIES_FOLDER}")
+    logger.info(f"   📂 Мультики:  {Path(VIDEOS_ROOT) / CARTOONS_FOLDER}")
+    logger.info(f"   🔑 TMDb API:  {'✅ настроен' if TMDB_API_KEY else '❌ не настроен'}")
+    logger.info(f"   🔑 OMDb API:  {'✅ настроен' if OMDB_API_KEY else '❌ не настроен'}")
+    logger.info(f"   🔑 Kinopoisk: {'✅ настроен' if KINOPOISK_API_KEY else '❌ не настроен'}")
+    logger.info("=" * 100)
+    logger.info("")
+
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
             read_stream,
