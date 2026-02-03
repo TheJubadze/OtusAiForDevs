@@ -18,30 +18,6 @@ venv/
 config.json
 claude_desktop_config.json
 
-# Временные файлы
+# Логи и временные файлы
+*.log
 *.tmp
-nul
-__pycache__/
-
-# Промежуточные отчеты (оставляем только финальные)
-rename_analysis.md
-rename_analysis_v2.md
-rename_preview_report.md
-rename_report.md
-rename_report_20_movies.md
-rename_report_full.md
-rename_report_kinopoisk.md
-problematic_files_report.md
-
-# Тестовые и временные скрипты
-test_*.py
-batch_rename_movies.py
-rename_all_movies.py
-rename_movies_russian.py
-rename_with_kinopoisk.py
-find_files.py
-fix_found_files.py
-fix_home_alone.py
-fix_remaining_files.py
-simple_fix.py
-generate_rename_report.py
