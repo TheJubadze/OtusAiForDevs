@@ -1,0 +1,161 @@
+"""
+Corrective RAG: Utilities for ChromaDB and Ollama.
+"""
+
+import chromadb
+import chromadb.utils.embedding_functions as ef
+import ollama
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+
+# Default configuration
+DEFAULT_OLLAMA_URL = "http://localhost:11434/api/embeddings"
+DEFAULT_EMBED_MODEL = "nomic-embed-text"
+DEFAULT_LLM_MODEL = "qwen2.5:3b"
+DEFAULT_CHROMA_PATH = "./chroma_db"
+DEFAULT_COLLECTION_NAME = "documents"
+
+
+class VectorStore:
+    """ChromaDB wrapper for document storage and retrieval."""
+
+    def __init__(
+        self,
+        chroma_path: str = DEFAULT_CHROMA_PATH,
+        collection_name: str = DEFAULT_COLLECTION_NAME,
+        ollama_url: str = DEFAULT_OLLAMA_URL,
+        embed_model: str = DEFAULT_EMBED_MODEL,
+    ):
+        self.chroma_path = chroma_path
+        self.collection_name = collection_name
+
+        self.embedding_function = ef.OllamaEmbeddingFunction(
+            url=ollama_url,
+            model_name=embed_model,
+        )
+
+        self.client = chromadb.PersistentClient(path=chroma_path)
+        self._collection = None
+
+    @property
+    def collection(self):
+        """Get or create the collection."""
+        if self._collection is None:
+            self._collection = self.client.get_or_create_collection(
+                name=self.collection_name,
+                embedding_function=self.embedding_function,
+                metadata={"hnsw:space": "cosine"},
+            )
+        return self._collection
+
+    def index_folder(
+        self,
+        folder_path: str,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 100,
+        reset: bool = False,
+    ) -> Dict[str, Any]:
+        """Index all documents in a folder."""
+
+        if reset:
+            try:
+                self.client.delete_collection(self.collection_name)
+                self._collection = None
+            except Exception:
+                pass
+
+        # Load documents
+        loader = DirectoryLoader(
+            folder_path,
+            glob="**/*.*",
+            loader_cls=TextLoader,
+            loader_kwargs={"encoding": "utf-8"},
+        )
+        documents = loader.load()
+
+        # Split into chunks
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n## ", "\n### ", "\n\n", "\n", " "],
+        )
+        chunks = splitter.split_documents(documents)
+
+        # Index in batches
+        batch_size = 20
+        for i in range(0, len(chunks), batch_size):
+            batch = chunks[i : i + batch_size]
+            self.collection.add(
+                ids=[f"chunk_{i+j}" for j in range(len(batch))],
+                documents=[c.page_content for c in batch],
+                metadatas=[{"source": c.metadata.get("source", "unknown")} for c in batch],
+            )
+
+        return {
+            "documents_loaded": len(documents),
+            "chunks_indexed": len(chunks),
+            "collection_size": self.collection.count(),
+        }
+
+    def search(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+        """Search for relevant documents."""
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=n_results,
+        )
+
+        docs = []
+        for i, doc in enumerate(results["documents"][0]):
+            docs.append({
+                "content": doc,
+                "source": results["metadatas"][0][i].get("source", "unknown"),
+                "distance": results["distances"][0][i] if results.get("distances") else None,
+            })
+
+        return docs
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get index status."""
+        try:
+            count = self.collection.count()
+            return {
+                "indexed": True,
+                "total_chunks": count,
+                "collection_name": self.collection_name,
+                "chroma_path": self.chroma_path,
+            }
+        except Exception as e:
+            return {
+                "indexed": False,
+                "error": str(e),
+            }
+
+
+class LLM:
+    """Ollama LLM wrapper."""
+
+    def __init__(self, model: str = DEFAULT_LLM_MODEL):
+        self.model = model
+
+    def generate(self, prompt: str, temperature: float = 0.1) -> str:
+        """Generate text from prompt."""
+        response = ollama.chat(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": temperature},
+        )
+        return response["message"]["content"]
+
+    def generate_json(self, prompt: str, temperature: float = 0.0) -> str:
+        """Generate JSON response (for structured outputs)."""
+        response = ollama.chat(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            options={"temperature": temperature},
+            format="json",
+        )
+        return response["message"]["content"]

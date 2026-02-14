@@ -1,0 +1,86 @@
+# Kong API Gateway — декларативная конфигурация
+# Файл: gateway/kong.yml
+
+_format_version: "3.0"
+
+services:
+  # Auth Service
+  - name: auth-service
+    url: http://auth-service:8001
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/auth
+        strip_path: true
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  # Auth login — отдельный rate limit
+  - name: auth-login
+    url: http://auth-service:8001/login
+    routes:
+      - name: auth-login-route
+        paths:
+          - /api/auth/login
+        methods:
+          - POST
+        strip_path: true
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 5
+          policy: local
+
+  # Task Service
+  - name: task-service
+    url: http://task-service:8002
+    routes:
+      - name: task-routes
+        paths:
+          - /api/tasks
+        strip_path: true
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: sub
+          claims_to_verify:
+            - exp
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+  # File Service
+  - name: file-service
+    url: http://file-service:8003
+    routes:
+      - name: file-routes
+        paths:
+          - /api/files
+        strip_path: true
+    plugins:
+      - name: jwt
+      - name: rate-limiting
+        config:
+          minute: 50
+          policy: local
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 50  # MB
+
+  # Health endpoint (без авторизации)
+  - name: health
+    url: http://task-service:8002/health
+    routes:
+      - name: health-route
+        paths:
+          - /api/health
+        methods:
+          - GET
+
+# WebSocket для Notification Service проксируется через nginx (frontend),
+# а не через Kong, так как Kong Community Edition не поддерживает WebSocket
+# для upstream-сервисов напрямую.
