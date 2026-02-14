@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Claude
+.claude/
+
+# Aider
+.aider*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config with secrets
+config.json
+
+# Temp
+.tmp/
+
+# Node
+node_modules/
