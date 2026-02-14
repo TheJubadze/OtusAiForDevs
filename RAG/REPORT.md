@@ -248,25 +248,6 @@ ollama_ef = ef.OllamaEmbeddingFunction(
 
 ---
 
-## Следующие шаги (запланированы)
-
-1. **LangGraph граф (Corrective RAG):**
-   - Rewrite query → Retrieve → Grade chunks → Generate → Hallucination check
-   - Условные переходы и retry-циклы
-
-2. **MCP-сервер (FastMCP) — 5 инструментов:**
-   - `index_folder` — индексация папки
-   - `ask_question` — полный RAG-пайплайн
-   - `find_relevant_docs` — поиск без генерации
-   - `summarize_document` — саммари файла
-   - `index_status` — статистика индекса
-
-3. **Docker Compose** — сервер + Ollama одной командой
-
-4. **Тесты** — минимум 10 (unit + integration + e2e)
-
----
-
 ## Ключевые уроки и наблюдения
 
 ### Удачные решения
@@ -413,15 +394,202 @@ print(result["sources"])
 
 ---
 
-## Следующие шаги
+## Этап 10: MCP-сервер (FastMCP)
 
-1. **MCP-сервер (FastMCP) — 5 инструментов:**
-   - `index_folder` — индексация папки
-   - `ask_question` — полный RAG-пайплайн
-   - `find_relevant_docs` — поиск без генерации
-   - `summarize_document` — саммари файла
-   - `index_status` — статистика индекса
+### Промпт 10 — Создание MCP-сервера
+> **Я:** давай MCP-сервер
 
-2. **Docker Compose** — сервер + Ollama одной командой
+**Результат:** Создан FastMCP сервер с 5 инструментами.
 
-3. **Тесты** — минимум 10 (unit + integration + e2e)
+### Структура
+
+```
+server.py                   # FastMCP сервер
+test_mcp_server.py          # Локальное тестирование
+claude_desktop_config.json  # Конфиг для Claude Desktop
+```
+
+### 5 инструментов MCP
+
+| Инструмент | Описание |
+|------------|----------|
+| `index_folder(path, chunk_size, reset)` | Индексация папки с документами в ChromaDB |
+| `ask_question(question, max_retries)` | Полный RAG-пайплайн (Corrective RAG) |
+| `find_relevant_docs(query, n_results)` | Поиск документов без генерации ответа |
+| `summarize_document(file_path)` | Создание краткого содержания документа |
+| `index_status()` | Статус индекса (кол-во чанков, путь) |
+
+### Запуск
+
+```bash
+# Локальное тестирование (без MCP протокола)
+python test_mcp_server.py
+
+# MCP-сервер
+python server.py
+```
+
+### Интеграция с Claude Desktop
+
+Скопировать содержимое `claude_desktop_config.json` в:
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+---
+
+## Этап 11: Docker Compose
+
+### Промпт 11 — Контейнеризация
+> **Я:** давай Docker Compose
+
+**Результат:** Создана конфигурация для запуска всего стека в Docker.
+
+### Файлы
+
+```
+Dockerfile              # Python 3.12 + зависимости + server.py
+docker-compose.yml      # С GPU (NVIDIA)
+docker-compose.cpu.yml  # Без GPU (CPU-only)
+.dockerignore           # Исключения для сборки
+```
+
+### Сервисы
+
+| Сервис | Описание |
+|--------|----------|
+| `ollama` | Ollama сервер (LLM + эмбеддинги), порт 11434 |
+| `ollama-pull` | Загрузка моделей при первом запуске (qwen2.5:3b, nomic-embed-text) |
+| `rag-server` | RAG MCP сервер, порт 8000 |
+
+### Запуск
+
+```bash
+# С GPU (NVIDIA)
+docker compose up -d
+
+# Без GPU (CPU-only)
+docker compose -f docker-compose.cpu.yml up -d
+```
+
+### Volumes
+
+- `ollama_data` — кэш моделей Ollama (~2.7 GB)
+- `chroma_data` — индекс ChromaDB
+
+### Обновления кода для Docker
+
+В `rag/utils.py` добавлена поддержка переменных окружения:
+- `OLLAMA_HOST` — адрес Ollama сервера (default: `http://localhost:11434`)
+- `CHROMA_PATH` — путь к базе ChromaDB
+- `LLM_MODEL` — модель LLM
+- `COLLECTION_NAME` — имя коллекции
+
+---
+
+## Этап 12: Тесты (pytest)
+
+### Промпт 12 — Написание тестов
+> **Я:** да, давай тесты
+
+**Результат:** Создано **42 теста** (требовалось минимум 10).
+
+### Структура тестов
+
+```
+tests/
+├── __init__.py
+├── conftest.py         # Фикстуры
+├── test_state.py       # 5 тестов — RAGState, Document
+├── test_utils.py       # 6 тестов — VectorStore, LLM
+├── test_nodes.py       # 12 тестов — узлы графа
+├── test_graph.py       # 9 тестов — роутинг, сборка графа
+└── test_server.py      # 10 тестов — MCP инструменты
+
+pytest.ini              # Конфигурация pytest
+```
+
+### Категории тестов
+
+| Файл | Кол-во | Что проверяет |
+|------|--------|---------------|
+| test_state.py | 5 | TypedDict структуры (Document, RAGState) |
+| test_utils.py | 6 | VectorStore, LLM с моками |
+| test_nodes.py | 12 | Все узлы графа: rewrite, retrieve, grade, generate, hallucination |
+| test_graph.py | 9 | Функции роутинга, сборка графа, компиляция |
+| test_server.py | 10 | Все 5 MCP инструментов |
+
+### Фикстуры (conftest.py)
+
+- `sample_state` — начальное состояние RAGState
+- `sample_documents` — тестовые документы
+- `mock_llm` — мок LLM
+- `mock_vector_store` — мок VectorStore
+- `temp_docs_folder` — временная папка с документами
+
+### Запуск тестов
+
+```bash
+# Все тесты
+pytest
+
+# С подробным выводом
+pytest -v
+
+# Конкретный файл
+pytest tests/test_nodes.py
+
+# С покрытием
+pytest --cov=rag --cov=server --cov-report=html
+```
+
+---
+
+## Итог проекта
+
+### Финальная структура
+
+```
+RAG/
+├── rag/                    # Модуль Corrective RAG
+│   ├── __init__.py
+│   ├── state.py            # RAGState TypedDict
+│   ├── utils.py            # VectorStore, LLM
+│   ├── nodes.py            # Узлы графа
+│   └── graph.py            # LangGraph граф
+├── tests/                  # 42 теста
+│   ├── conftest.py
+│   ├── test_state.py
+│   ├── test_utils.py
+│   ├── test_nodes.py
+│   ├── test_graph.py
+│   └── test_server.py
+├── sample_docs/            # 21 демо-документ
+├── server.py               # FastMCP сервер (5 инструментов)
+├── Dockerfile
+├── docker-compose.yml
+├── docker-compose.cpu.yml
+├── requirements.txt
+├── pytest.ini
+└── REPORT.md
+```
+
+### Выполненные требования
+
+| Требование | Статус |
+|------------|--------|
+| LangGraph Corrective RAG | ✅ 7 узлов, retry-логика |
+| MCP-сервер (FastMCP) | ✅ 5 инструментов |
+| ChromaDB + Ollama | ✅ nomic-embed-text + qwen2.5:3b |
+| Docker Compose | ✅ GPU и CPU версии |
+| Тесты (минимум 10) | ✅ 42 теста |
+
+### Стек технологий
+
+- **Python 3.12**
+- **LangGraph** — Corrective RAG граф
+- **LangChain** — загрузка документов, text splitter
+- **ChromaDB** — векторная база данных
+- **Ollama** — локальные LLM (qwen2.5:3b, nomic-embed-text)
+- **FastMCP** — MCP-сервер
+- **pytest** — тестирование
+- **Docker** — контейнеризация

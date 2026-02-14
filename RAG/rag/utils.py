@@ -2,6 +2,7 @@
 Corrective RAG: Utilities for ChromaDB and Ollama.
 """
 
+import os
 import chromadb
 import chromadb.utils.embedding_functions as ef
 import ollama
@@ -12,12 +13,13 @@ from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-# Default configuration
-DEFAULT_OLLAMA_URL = "http://localhost:11434/api/embeddings"
+# Default configuration (with env var support for Docker)
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+DEFAULT_OLLAMA_URL = f"{OLLAMA_HOST}/api/embeddings"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
-DEFAULT_LLM_MODEL = "qwen2.5:3b"
-DEFAULT_CHROMA_PATH = "./chroma_db"
-DEFAULT_COLLECTION_NAME = "documents"
+DEFAULT_LLM_MODEL = os.environ.get("LLM_MODEL", "qwen2.5:3b")
+DEFAULT_CHROMA_PATH = os.environ.get("CHROMA_PATH", "./chroma_db")
+DEFAULT_COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "documents")
 
 
 class VectorStore:
@@ -138,12 +140,13 @@ class VectorStore:
 class LLM:
     """Ollama LLM wrapper."""
 
-    def __init__(self, model: str = DEFAULT_LLM_MODEL):
+    def __init__(self, model: str = DEFAULT_LLM_MODEL, host: str = OLLAMA_HOST):
         self.model = model
+        self.client = ollama.Client(host=host)
 
     def generate(self, prompt: str, temperature: float = 0.1) -> str:
         """Generate text from prompt."""
-        response = ollama.chat(
+        response = self.client.chat(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": temperature},
@@ -152,7 +155,7 @@ class LLM:
 
     def generate_json(self, prompt: str, temperature: float = 0.0) -> str:
         """Generate JSON response (for structured outputs)."""
-        response = ollama.chat(
+        response = self.client.chat(
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             options={"temperature": temperature},
