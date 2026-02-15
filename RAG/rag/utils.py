@@ -9,8 +9,22 @@ import ollama
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# Text file extensions to index (code, docs, config)
+TEXT_EXTENSIONS = {
+    ".md", ".txt", ".rst", ".adoc",
+    ".py", ".cs", ".js", ".ts", ".jsx", ".tsx", ".java", ".go",
+    ".rb", ".rs", ".cpp", ".c", ".h", ".hpp", ".kt", ".swift",
+    ".sql", ".graphql",
+    ".html", ".css", ".scss", ".less", ".vue", ".svelte",
+    ".yaml", ".yml", ".json", ".xml", ".toml", ".ini", ".cfg", ".conf",
+    ".sh", ".bash", ".bat", ".ps1", ".psm1",
+    ".dockerfile", ".tf", ".hcl",
+    ".env", ".properties", ".gradle",
+    ".csv",
+}
 
 
 # Default configuration (with env var support for Docker)
@@ -70,15 +84,20 @@ class VectorStore:
             except Exception:
                 pass
 
-        # Load documents (autodetect encoding for non-UTF-8 files)
-        loader = DirectoryLoader(
-            folder_path,
-            glob="**/*.*",
-            loader_cls=TextLoader,
-            loader_kwargs={"autodetect_encoding": True},
-            silent_errors=True,
-        )
-        documents = loader.load()
+        # Load only text files with known extensions
+        documents = []
+        skipped = 0
+        for file_path in Path(folder_path).rglob("*"):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in TEXT_EXTENSIONS:
+                skipped += 1
+                continue
+            try:
+                loader = TextLoader(str(file_path), autodetect_encoding=True)
+                documents.extend(loader.load())
+            except Exception:
+                skipped += 1
 
         # Split into chunks
         splitter = RecursiveCharacterTextSplitter(
