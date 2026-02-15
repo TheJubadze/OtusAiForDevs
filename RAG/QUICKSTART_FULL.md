@@ -96,70 +96,34 @@ python -m pytest tests/ -v
 
 ## Шаг 4. Индексация проекта и вики
 
-Создайте файл `C:\git\OtusAiForDevs\RAG\index_my_project.py`:
+### 4.1. Настройте пути
 
-```python
-"""
-Скрипт индексации проекта и вики.
-Запуск: python index_my_project.py
-"""
-
-from rag import create_rag_chain
-
-# ============ НАСТРОЙКИ — ПОМЕНЯЙТЕ ПОД СЕБЯ ============
-
-# Папки для индексации (укажите свои пути)
-FOLDERS = [
-    r"C:\git\MyProject",    # Моно-репозиторий
-    r"C:\git\wiki",         # Вики-документация
-]
-
-# Где хранить индекс (создастся автоматически)
-INDEX_PATH = r"C:\git\rag_index"
-
-# Имя коллекции (любое)
-COLLECTION = "my_project"
-
-# =========================================================
-
-def main():
-    print("Создаю RAG...")
-    chain, vector_store, llm = create_rag_chain(
-        chroma_path=INDEX_PATH,
-        collection_name=COLLECTION,
-    )
-
-    # Индексируем первую папку (с reset=True — создаём чистый индекс)
-    for i, folder in enumerate(FOLDERS):
-        reset = (i == 0)  # reset только для первой папки
-        print(f"\nИндексирую: {folder} {'(с нуля)' if reset else '(добавляю)'}")
-
-        result = vector_store.index_folder(folder, reset=reset)
-
-        print(f"  Загружено файлов: {result['documents_loaded']}")
-        print(f"  Создано чанков:   {result['chunks_indexed']}")
-        print(f"  Всего в индексе:  {result['collection_size']}")
-
-    print("\nГотово! Индекс сохранён в:", INDEX_PATH)
-    print("Теперь настройте MCP-сервер (см. Шаг 5 в QUICKSTART.md)")
-
-
-if __name__ == "__main__":
-    main()
-```
-
-Запустите:
+Скопируйте файл настроек и отредактируйте его:
 
 ```cmd
-cd C:\git\OtusAiForDevs\RAG
-venv\Scripts\activate
+copy .env.example .env
+notepad .env
+```
+
+Укажите свои папки (через `;`) и раскомментируйте `LLM_MODEL`:
+
+```ini
+INDEX_FOLDERS=C:\git\MyProject;C:\git\wiki
+CHROMA_PATH=C:\git\rag_index
+COLLECTION_NAME=my_project
+LLM_MODEL=qwen2.5:3b
+```
+
+### 4.2. Запустите индексацию
+
+```cmd
 python index_my_project.py
 ```
 
 Пример вывода:
 
 ```
-Создаю RAG...
+Создаю VectorStore...
 
 Индексирую: C:\git\MyProject (с нуля)
   Загружено файлов: 347
@@ -175,9 +139,7 @@ python index_my_project.py
 ```
 
 > **Время индексации** зависит от объёма файлов. 500 файлов ~ 2-5 минут.
->
-> **Переиндексация.** Если добавились новые файлы — запустите скрипт заново.
-> Первая папка индексируется с `reset=True` (индекс пересоздаётся с нуля).
+> **Переиндексация:** запустите скрипт заново — индекс пересоздастся с нуля.
 
 ---
 
@@ -306,13 +268,10 @@ Claude вызовет `index_folder` с `reset=True`.
 
 Если в моно-репозитории 10 000+ файлов, индексация может быть долгой и шумной (бинарники, node_modules, и т.д.). Лучше индексировать только нужные папки:
 
-```python
-FOLDERS = [
-    r"C:\git\MyProject\docs",         # Документация
-    r"C:\git\MyProject\src\backend",   # Серверный код
-    r"C:\git\MyProject\src\shared",    # Общие модули
-    r"C:\git\wiki",                    # Вики
-]
+Укажите их в `.env`:
+
+```ini
+INDEX_FOLDERS=C:\git\MyProject\docs;C:\git\MyProject\src\backend;C:\git\wiki
 ```
 
 ### Какие файлы индексируются?
@@ -323,15 +282,10 @@ FOLDERS = [
 
 ### Как увеличить размер чанков?
 
-Если ответы теряют контекст (обрывки кода/текста), увеличьте размер чанков:
+Если ответы теряют контекст (обрывки кода/текста), используйте инструмент `index_folder` через Claude с увеличенными параметрами:
 
-```python
-result = vector_store.index_folder(
-    folder,
-    chunk_size=1500,      # Было 1000, стало 1500
-    chunk_overlap=200,    # Было 100, стало 200
-    reset=True,
-)
+```
+Проиндексируй C:\git\wiki с chunk_size=1500 и chunk_overlap=200
 ```
 
 ### Медленно работает?
