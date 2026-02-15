@@ -70,12 +70,13 @@ class VectorStore:
             except Exception:
                 pass
 
-        # Load documents
+        # Load documents (autodetect encoding for non-UTF-8 files)
         loader = DirectoryLoader(
             folder_path,
             glob="**/*.*",
             loader_cls=TextLoader,
-            loader_kwargs={"encoding": "utf-8"},
+            loader_kwargs={"autodetect_encoding": True},
+            silent_errors=True,
         )
         documents = loader.load()
 
