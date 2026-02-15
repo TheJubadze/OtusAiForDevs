@@ -544,6 +544,100 @@ pytest --cov=rag --cov=server --cov-report=html
 
 ---
 
+## Этап 13: Рефакторинг и улучшения
+
+### Промпт 13 — Анализ проекта и исправление замечаний
+> **Я (в Claude Code):** проанализируй проект
+> **Я:** исправь все замечания
+
+**Результат:** Claude Code провёл ревью проекта и выявил 6 замечаний. Все исправлены:
+
+### 1. Удалены legacy-тесты из корня проекта
+
+Удалены 6 файлов: `test_index.py`, `test_rag.py`, `test_rag_v2.py`, `test_rag_v3.py`, `test_langgraph.py`, `test_mcp_server.py`.
+
+Эти тесты были ранними версиями, использовавшимися на этапах 4–8. После создания полноценного набора в `tests/` они стали дублироваться и не запускались (pytest.ini указывал только на `tests/`).
+
+### 2. Добавлен pyproject.toml
+
+Проект не имел стандартной конфигурации для сборки и установки. Добавлен `pyproject.toml` с:
+- Метаданными пакета (name, version, description)
+- Зависимостями с верхними границами версий
+- Опциональными зависимостями для тестов (`[test]`)
+- Конфигурацией pytest (перенесена из `pytest.ini`)
+
+```toml
+[project]
+name = "rag-knowledge-base"
+version = "1.0.0"
+requires-python = ">=3.11"
+```
+
+### 3. Рефакторинг глобального состояния в server.py
+
+**Было:** три глобальные переменные `_vector_store`, `_llm`, `_chain` с мутацией через `global`.
+
+**Стало:** класс `AppState` с lazy-property:
+
+```python
+class AppState:
+    """Lazy-initialized application state container."""
+
+    @property
+    def vector_store(self) -> VectorStore: ...
+    @property
+    def llm(self) -> LLM: ...
+    @property
+    def chain(self): ...
+
+app_state = AppState()
+```
+
+Функции-обёртки `get_vector_store()`, `get_llm()`, `get_chain()` сохранены для обратной совместимости тестов, но теперь просто делегируют в `app_state`.
+
+### 4. Пиннинг версий зависимостей
+
+**Было:** `langgraph>=0.2.0` (без верхней границы — потенциальные breaking changes).
+
+**Стало:** `langgraph>=0.2.0,<1.0` — защита от несовместимых мажорных версий.
+
+Обновлены оба файла: `requirements.txt` и `pyproject.toml`.
+
+### 5. Улучшена обработка больших документов в grade_chunks
+
+**Было:** жёсткая обрезка `doc["content"][:500]` — можно потерять контекст на середине предложения.
+
+**Стало:** лимит увеличен до 800 символов + умная обрезка по границе предложения:
+
+```python
+if len(content) > 800:
+    truncated = content[:800]
+    last_period = truncated.rfind(".")
+    if last_period > 400:
+        truncated = truncated[:last_period + 1]
+    content = truncated
+```
+
+### 6. Удалён pytest.ini
+
+Конфигурация pytest перенесена в `pyproject.toml` (`[tool.pytest.ini_options]`), что устраняет дублирование конфигов.
+
+### 7. Исправлен Windows-специфичный баг в тестах
+
+Тест `test_get_status_empty` падал на Windows: ChromaDB держит блокировку на файл `chroma.sqlite3`, и `TemporaryDirectory` не мог его удалить при выходе из контекста.
+
+**Решение:** заменён `TemporaryDirectory` на `tempfile.mkdtemp()` + `shutil.rmtree(tmpdir, ignore_errors=True)` в `finally`.
+
+### Результат
+
+Все **42 теста проходят** после всех изменений:
+
+```
+============================= 42 passed in 0.82s ==============================
+```
+
+---
+
 ## Итог проекта
 
 ### Финальная структура
@@ -565,11 +659,11 @@ RAG/
 │   └── test_server.py
 ├── sample_docs/            # 21 демо-документ
 ├── server.py               # FastMCP сервер (5 инструментов)
+├── pyproject.toml          # Конфигурация пакета и pytest
 ├── Dockerfile
 ├── docker-compose.yml
 ├── docker-compose.cpu.yml
 ├── requirements.txt
-├── pytest.ini
 └── REPORT.md
 ```
 

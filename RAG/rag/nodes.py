@@ -77,12 +77,21 @@ def create_nodes(vector_store: VectorStore, llm: LLM):
         relevant = []
 
         for doc in docs:
+            content = doc["content"]
+            if len(content) > 800:
+                # Обрезаем по границе предложения, чтобы не терять контекст
+                truncated = content[:800]
+                last_period = truncated.rfind(".")
+                if last_period > 400:
+                    truncated = truncated[: last_period + 1]
+                content = truncated
+
             prompt = f"""Оцени релевантность документа для ответа на вопрос.
 
 ВОПРОС: {query}
 
 ДОКУМЕНТ:
-{doc["content"][:500]}
+{content}
 
 Документ содержит информацию, полезную для ответа на вопрос?
 Отвечай JSON: {{"relevant": true}} или {{"relevant": false}}"""

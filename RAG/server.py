@@ -14,6 +14,7 @@ from typing import Optional
 import os
 
 from rag import create_rag_chain, ask_question as rag_ask, VectorStore, LLM
+from rag.graph import build_graph
 
 
 # Initialize MCP server
@@ -22,39 +23,54 @@ mcp = FastMCP(
     description="RAG Knowledge Base с локальной LLM. Индексирует документы и отвечает на вопросы.",
 )
 
-# Global state
-_vector_store: Optional[VectorStore] = None
-_llm: Optional[LLM] = None
-_chain = None
+
+class AppState:
+    """Lazy-initialized application state container."""
+
+    def __init__(self):
+        self._vector_store: Optional[VectorStore] = None
+        self._llm: Optional[LLM] = None
+        self._chain = None
+
+    @property
+    def vector_store(self) -> VectorStore:
+        if self._vector_store is None:
+            self._vector_store = VectorStore(
+                chroma_path=os.environ.get("CHROMA_PATH", "./chroma_db"),
+                collection_name=os.environ.get("COLLECTION_NAME", "documents"),
+            )
+        return self._vector_store
+
+    @property
+    def llm(self) -> LLM:
+        if self._llm is None:
+            self._llm = LLM(model=os.environ.get("LLM_MODEL", "qwen2.5:3b"))
+        return self._llm
+
+    @property
+    def chain(self):
+        if self._chain is None:
+            graph = build_graph(self.vector_store, self.llm)
+            self._chain = graph.compile()
+        return self._chain
+
+
+app_state = AppState()
 
 
 def get_vector_store() -> VectorStore:
-    """Get or create VectorStore instance."""
-    global _vector_store
-    if _vector_store is None:
-        _vector_store = VectorStore(
-            chroma_path=os.environ.get("CHROMA_PATH", "./chroma_db"),
-            collection_name=os.environ.get("COLLECTION_NAME", "documents"),
-        )
-    return _vector_store
+    """Get VectorStore instance."""
+    return app_state.vector_store
 
 
 def get_llm() -> LLM:
-    """Get or create LLM instance."""
-    global _llm
-    if _llm is None:
-        _llm = LLM(model=os.environ.get("LLM_MODEL", "qwen2.5:3b"))
-    return _llm
+    """Get LLM instance."""
+    return app_state.llm
 
 
 def get_chain():
-    """Get or create compiled RAG chain."""
-    global _chain
-    if _chain is None:
-        from rag.graph import build_graph
-        graph = build_graph(get_vector_store(), get_llm())
-        _chain = graph.compile()
-    return _chain
+    """Get compiled RAG chain."""
+    return app_state.chain
 
 
 @mcp.tool()

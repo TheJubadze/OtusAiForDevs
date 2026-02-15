@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-knowledge-base"
+version = "1.0.0"
+description = "Corrective RAG Knowledge Base with LangGraph, ChromaDB, and Ollama"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2.0,<1.0",
+    "langchain>=0.3.0,<1.0",
+    "langchain-community>=0.3.0,<1.0",
+    "langchain-text-splitters>=0.3.0,<1.0",
+    "chromadb>=0.5.0,<1.0",
+    "ollama>=0.3.0,<1.0",
+    "fastmcp>=0.1.0,<1.0",
+    "python-dotenv>=1.0.0,<2.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0,<9.0",
+    "pytest-asyncio>=0.24.0,<1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["rag*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

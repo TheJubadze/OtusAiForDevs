@@ -13,7 +13,8 @@ class TestVectorStore:
 
     def test_get_status_empty(self):
         """Test status when collection doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = tempfile.mkdtemp()
+        try:
             from rag.utils import VectorStore
 
             vs = VectorStore(
@@ -25,6 +26,9 @@ class TestVectorStore:
             # New collection will be created with 0 items
             assert status["indexed"] is True
             assert status["total_chunks"] == 0
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def test_search_returns_list(self, mock_vector_store):
         """Test that search returns a list of documents."""
