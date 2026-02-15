@@ -111,19 +111,27 @@ class VectorStore:
         )
         chunks = splitter.split_documents(documents)
 
+        # Filter out empty chunks
+        chunks = [c for c in chunks if c.page_content.strip()]
+
         # Index in batches
         batch_size = 20
+        indexed = 0
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
-            self.collection.add(
-                ids=[f"chunk_{i+j}" for j in range(len(batch))],
-                documents=[c.page_content for c in batch],
-                metadatas=[{"source": c.metadata.get("source", "unknown")} for c in batch],
-            )
+            try:
+                self.collection.add(
+                    ids=[f"chunk_{i+j}" for j in range(len(batch))],
+                    documents=[c.page_content for c in batch],
+                    metadatas=[{"source": c.metadata.get("source", "unknown")} for c in batch],
+                )
+                indexed += len(batch)
+            except Exception as e:
+                print(f"Warning: batch {i}-{i+len(batch)} failed: {e}")
 
         return {
             "documents_loaded": len(documents),
-            "chunks_indexed": len(chunks),
+            "chunks_indexed": indexed,
             "collection_size": self.collection.count(),
         }
 
