@@ -56,11 +56,8 @@ pip install -r requirements.txt
 ### 3. Проверка работы
 
 ```bash
-# Тест LangGraph RAG
-python test_langgraph.py
-
-# Тест MCP-сервера (локально, без MCP протокола)
-python test_mcp_server.py
+# Запуск тестов
+python -m pytest tests/ -v
 ```
 
 ---
@@ -327,13 +324,12 @@ RAG/
 │   └── test_server.py
 ├── sample_docs/                # 21 демо-документ
 ├── server.py                   # FastMCP сервер
-├── test_langgraph.py           # Тест RAG графа
-├── test_mcp_server.py          # Тест MCP-инструментов
+├── pyproject.toml              # Конфигурация пакета и pytest
 ├── Dockerfile
 ├── docker-compose.yml          # GPU версия
 ├── docker-compose.cpu.yml      # CPU версия
 ├── requirements.txt
-├── pytest.ini
+├── QUICKSTART.md               # Инструкция для быстрого старта
 ├── REPORT.md                   # История разработки
 └── README.md                   # Эта инструкция
 ```

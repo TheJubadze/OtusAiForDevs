@@ -1,243 +1,404 @@
-# Быстрый старт: RAG для вашего репозитория
+# Инструкция: RAG для вашего проекта и вики
 
-Пошаговая инструкция как создать базу знаний из любой папки с документами и начать задавать вопросы.
+Пошаговая инструкция «для чайников». Цель — установить систему на чистый Windows-компьютер,
+проиндексировать рабочий проект и вики, и задавать вопросы через Claude в VS Code.
+
+**Сценарий из этой инструкции:**
+
+```
+C:\git\MyProject\   — моно-репозиторий с большим проектом (.cs, .py, .md, .json, ...)
+C:\git\wiki\        — репозиторий с вики-документацией (.md файлы)
+```
 
 ---
 
-## Шаг 1: Установка (один раз)
+## Шаг 1. Установка Python 3.12
 
-### 1.1 Установите Ollama
+> ChromaDB не работает с Python 3.14. Нужна версия 3.11 или 3.12.
 
-Скачайте с https://ollama.com/download и установите.
+1. Скачайте Python 3.12 с https://www.python.org/downloads/release/python-3128/
+2. При установке **обязательно** поставьте галочку **"Add Python to PATH"**
+3. Проверьте:
 
-### 1.2 Скачайте модели
-
-Откройте терминал и выполните:
-
-```bash
-ollama pull qwen2.5:3b
-ollama pull nomic-embed-text
+```cmd
+python --version
 ```
 
-Это займёт ~5-10 минут (скачивается ~2.7 GB).
+Ожидаемый вывод: `Python 3.12.x`
 
-### 1.3 Склонируйте RAG и установите зависимости
+> Если у вас несколько версий Python, используйте `py -3.12` вместо `python` во всех командах ниже.
 
-```bash
+---
+
+## Шаг 2. Установка Ollama (локальная LLM)
+
+Ollama — это программа, которая запускает LLM-модели прямо на вашем компьютере. Никакие данные не отправляются в интернет.
+
+1. Скачайте с https://ollama.com/download (Windows)
+2. Установите и запустите
+3. Откройте **новый** терминал (cmd или PowerShell) и скачайте модели:
+
+```cmd
+ollama pull nomic-embed-text
+ollama pull qwen2.5:3b
+```
+
+Это скачает ~2.7 GB. Нужен интернет, но только один раз.
+
+4. Проверьте, что Ollama работает:
+
+```cmd
+ollama list
+```
+
+Ожидаемый вывод:
+
+```
+NAME                 ID           SIZE     MODIFIED
+nomic-embed-text     ...          274 MB   ...
+qwen2.5:3b           ...          2.0 GB   ...
+```
+
+> Ollama работает как фоновый сервис. После установки она автоматически запускается при старте Windows. Иконка в трее — лама.
+
+---
+
+## Шаг 3. Клонирование и установка RAG
+
+```cmd
+cd C:\git
 git clone https://github.com/TheJubadze/OtusAiForDevs.git
-cd OtusAiForDevs/RAG
+cd OtusAiForDevs\RAG
+```
 
-# Windows
+Создайте виртуальное окружение и установите зависимости:
+
+```cmd
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-
-# Linux/macOS
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
 ```
+
+> Если `python -m venv` не работает — попробуйте `py -3.12 -m venv venv`
+
+Проверка — тесты должны пройти:
+
+```cmd
+python -m pytest tests/ -v
+```
+
+Ожидаемый вывод: `42 passed`
 
 ---
 
-## Шаг 2: Индексация вашего репозитория
+## Шаг 4. Индексация проекта и вики
 
-### 2.1 Создайте скрипт `my_rag.py`
-
-В папке `RAG/` создайте файл `my_rag.py`:
-
-```python
-from rag import create_rag_chain, ask_question
-
-# 1. Создаём RAG
-chain, vector_store, llm = create_rag_chain(
-    chroma_path="./my_chroma_db",      # Где хранить индекс
-    collection_name="my_project",       # Название коллекции
-)
-
-# 2. Индексируем папку (укажите путь к вашему репозиторию)
-print("Индексация...")
-result = vector_store.index_folder(
-    "C:/path/to/your/repo",  # <-- ЗАМЕНИТЕ НА ПУТЬ К ВАШЕЙ ПАПКЕ
-    reset=True,              # True = пересоздать индекс с нуля
-)
-print(f"Готово! Проиндексировано {result['chunks_indexed']} чанков")
-
-# 3. Задаём вопросы
-while True:
-    question = input("\n❓ Ваш вопрос (или 'выход'): ")
-    if question.lower() in ['выход', 'exit', 'q']:
-        break
-
-    result = ask_question(question, chain=chain)
-    print(f"\n💬 {result['answer']}")
-    if result['sources']:
-        print(f"📎 Источники: {', '.join(result['sources'])}")
-```
-
-### 2.2 Запустите
-
-```bash
-python my_rag.py
-```
-
-### 2.3 Задавайте вопросы
-
-```
-Индексация...
-Готово! Проиндексировано 156 чанков
-
-❓ Ваш вопрос (или 'выход'): Как работает авторизация?
-
-💬 Авторизация реализована через JWT токены...
-📎 Источники: auth.py, README.md
-
-❓ Ваш вопрос (или 'выход'): выход
-```
-
----
-
-## Пример: индексация Azure DevOps Wiki
-
-```bash
-# 1. Склонируйте Wiki
-git clone https://dev.azure.com/your-org/your-project/_git/your-project.wiki
-```
-
-```python
-# 2. В my_rag.py укажите путь
-result = vector_store.index_folder(
-    "C:/repos/your-project.wiki",
-    reset=True,
-)
-```
-
----
-
-## Пример: индексация GitHub репозитория
-
-```bash
-# 1. Склонируйте репозиторий
-git clone https://github.com/user/repo.git
-```
-
-```python
-# 2. В my_rag.py укажите путь
-result = vector_store.index_folder(
-    "C:/repos/repo",
-    reset=True,
-)
-```
-
----
-
-## Частые вопросы
-
-### Какие файлы индексируются?
-
-Все текстовые файлы: `.md`, `.txt`, `.py`, `.js`, `.ts`, `.java`, `.go`, `.yaml`, `.json` и т.д.
-
-### Как переиндексировать после изменений?
-
-Запустите скрипт снова с `reset=True` — старый индекс удалится и создастся новый.
-
-### Где хранится индекс?
-
-В папке, которую вы указали в `chroma_path` (по умолчанию `./my_chroma_db`).
-
-### Как изменить размер чанков?
-
-```python
-result = vector_store.index_folder(
-    "C:/path/to/repo",
-    chunk_size=1500,      # Больше контекста в каждом чанке
-    chunk_overlap=200,    # Больше перекрытие
-    reset=True,
-)
-```
-
-### Медленно генерирует ответы?
-
-На CPU это нормально (10-30 сек). Для ускорения:
-- Используйте GPU (NVIDIA)
-- Или меньшую модель: `ollama pull qwen2.5:1.5b` и в коде `LLM_MODEL=qwen2.5:1.5b`
-
----
-
-## Готовый скрипт с настройками
+Создайте файл `C:\git\OtusAiForDevs\RAG\index_my_project.py`:
 
 ```python
 """
-RAG для вашего репозитория.
-Использование: python my_rag.py
+Скрипт индексации проекта и вики.
+Запуск: python index_my_project.py
 """
 
-from rag import create_rag_chain, ask_question
+from rag import create_rag_chain
 
-# ============ НАСТРОЙКИ ============
-REPO_PATH = "C:/path/to/your/repo"  # <-- Путь к вашей папке
-INDEX_PATH = "./my_chroma_db"        # Где хранить индекс
-COLLECTION = "my_docs"               # Название коллекции
-REINDEX = True                       # True = пересоздать индекс
-# ===================================
+# ============ НАСТРОЙКИ — ПОМЕНЯЙТЕ ПОД СЕБЯ ============
+
+# Папки для индексации (укажите свои пути)
+FOLDERS = [
+    r"C:\git\MyProject",    # Моно-репозиторий
+    r"C:\git\wiki",         # Вики-документация
+]
+
+# Где хранить индекс (создастся автоматически)
+INDEX_PATH = r"C:\git\rag_index"
+
+# Имя коллекции (любое)
+COLLECTION = "my_project"
+
+# =========================================================
 
 def main():
-    # Создание RAG
-    print("🚀 Запуск RAG...")
+    print("Создаю RAG...")
     chain, vector_store, llm = create_rag_chain(
         chroma_path=INDEX_PATH,
         collection_name=COLLECTION,
     )
 
-    # Индексация
-    if REINDEX:
-        print(f"📂 Индексация {REPO_PATH}...")
-        result = vector_store.index_folder(REPO_PATH, reset=True)
-        print(f"✅ Проиндексировано: {result['chunks_indexed']} чанков")
-    else:
-        status = vector_store.get_status()
-        print(f"📊 Используем существующий индекс: {status['total_chunks']} чанков")
+    # Индексируем первую папку (с reset=True — создаём чистый индекс)
+    for i, folder in enumerate(FOLDERS):
+        reset = (i == 0)  # reset только для первой папки
+        print(f"\nИндексирую: {folder} {'(с нуля)' if reset else '(добавляю)'}")
 
-    # Интерактивный режим
-    print("\n" + "="*50)
-    print("Задавайте вопросы. Для выхода введите 'q' или 'выход'.")
-    print("="*50)
+        result = vector_store.index_folder(folder, reset=reset)
 
-    while True:
-        question = input("\n❓ Вопрос: ").strip()
+        print(f"  Загружено файлов: {result['documents_loaded']}")
+        print(f"  Создано чанков:   {result['chunks_indexed']}")
+        print(f"  Всего в индексе:  {result['collection_size']}")
 
-        if not question:
-            continue
-        if question.lower() in ['q', 'quit', 'exit', 'выход']:
-            print("👋 До свидания!")
-            break
-
-        print("🔍 Ищу ответ...")
-        result = ask_question(question, chain=chain)
-
-        if result.get('error'):
-            print(f"❌ Ошибка: {result['error']}")
-        else:
-            print(f"\n💬 {result['answer']}")
-            if result['sources']:
-                print(f"\n📎 Источники: {', '.join(result['sources'])}")
+    print("\nГотово! Индекс сохранён в:", INDEX_PATH)
+    print("Теперь настройте MCP-сервер (см. Шаг 5 в QUICKSTART.md)")
 
 
 if __name__ == "__main__":
     main()
 ```
 
+Запустите:
+
+```cmd
+cd C:\git\OtusAiForDevs\RAG
+venv\Scripts\activate
+python index_my_project.py
+```
+
+Пример вывода:
+
+```
+Создаю RAG...
+
+Индексирую: C:\git\MyProject (с нуля)
+  Загружено файлов: 347
+  Создано чанков:   1420
+  Всего в индексе:  1420
+
+Индексирую: C:\git\wiki (добавляю)
+  Загружено файлов: 89
+  Создано чанков:   310
+  Всего в индексе:  1730
+
+Готово! Индекс сохранён в: C:\git\rag_index
+```
+
+> **Время индексации** зависит от объёма файлов. 500 файлов ~ 2-5 минут.
+>
+> **Переиндексация.** Если добавились новые файлы — запустите скрипт заново.
+> Первая папка индексируется с `reset=True` (индекс пересоздаётся с нуля).
+
 ---
 
-## Итого: 3 команды для старта
+## Шаг 5. Подключение к Claude Code (VS Code)
 
-```bash
-# 1. Один раз: установка моделей
-ollama pull qwen2.5:3b && ollama pull nomic-embed-text
+### 5.1. Установите Claude Code
 
-# 2. Один раз: установка Python зависимостей
-pip install -r requirements.txt
+Если ещё не установлен:
 
-# 3. Запуск RAG (отредактируйте REPO_PATH в скрипте)
-python my_rag.py
+```cmd
+npm install -g @anthropic-ai/claude-code
 ```
+
+> Нужен Node.js. Скачать: https://nodejs.org/
+
+### 5.2. Добавьте MCP-сервер
+
+Откройте терминал и выполните:
+
+```cmd
+claude mcp add rag-knowledge-base ^
+  -e CHROMA_PATH=C:\git\rag_index ^
+  -e COLLECTION_NAME=my_project ^
+  -e LLM_MODEL=qwen2.5:3b ^
+  -- python C:\git\OtusAiForDevs\RAG\server.py
+```
+
+> Эта команда добавляет MCP-сервер в конфигурацию Claude Code. Данные сохраняются в
+> `~/.claude/settings.json` — сервер будет доступен во всех проектах.
+
+### 5.3. Проверьте подключение
+
+Откройте VS Code, запустите Claude Code (Ctrl+Shift+P → "Claude Code: Open") и напишите:
+
+```
+Покажи статус индекса
+```
+
+Если всё настроено правильно, Claude вызовет инструмент `index_status` и покажет:
+
+```
+Статус индекса:
+- Коллекция: my_project
+- Чанков в индексе: 1730
+- Путь к базе: C:\git\rag_index
+```
+
+---
+
+## Шаг 6. Использование
+
+Теперь в любом разговоре с Claude в VS Code вам доступны 5 инструментов.
+Claude сам решает, когда их вызывать, на основе вашего вопроса.
+
+### Задать вопрос по проекту
+
+```
+Как у нас реализована авторизация?
+```
+
+Claude вызовет `ask_question` — полный RAG-пайплайн с поиском по индексу, проверкой релевантности и генерацией ответа.
+
+### Найти документы
+
+```
+Найди все документы, связанные с деплоем
+```
+
+Claude вызовет `find_relevant_docs` — покажет найденные файлы с превью, без генерации ответа.
+
+### Суммаризация файла
+
+```
+Сделай краткое содержание файла C:\git\wiki\architecture.md
+```
+
+Claude вызовет `summarize_document` — LLM прочитает файл и выдаст 3-5 ключевых пунктов.
+
+### Переиндексация через Claude
+
+Если добавились новые файлы, можно переиндексировать прямо из чата:
+
+```
+Проиндексируй папку C:\git\wiki с нуля
+```
+
+Claude вызовет `index_folder` с `reset=True`.
+
+---
+
+## Как это работает (в двух словах)
+
+```
+Ваш вопрос
+    │
+    ▼
+[1. Переписывание запроса]  — LLM делает запрос более точным
+    │
+    ▼
+[2. Поиск по индексу]       — ChromaDB ищет похожие фрагменты текста
+    │
+    ▼
+[3. Оценка релевантности]   — LLM проверяет: найденное вообще по теме?
+    │
+    ├─ Нет → переформулировать и искать заново (до 2 попыток)
+    │
+    ▼
+[4. Генерация ответа]       — LLM пишет ответ на основе найденных фрагментов
+    │
+    ▼
+[5. Проверка галлюцинаций]  — LLM проверяет: ответ основан на контексте?
+    │
+    ├─ Нет → переформулировать и искать заново
+    │
+    ▼
+Ответ + список источников
+```
+
+Всё работает **локально** — данные не уходят в интернет (кроме самого Claude API).
+
+---
+
+## Советы
+
+### Большой репозиторий — что индексировать?
+
+Если в моно-репозитории 10 000+ файлов, индексация может быть долгой и шумной (бинарники, node_modules, и т.д.). Лучше индексировать только нужные папки:
+
+```python
+FOLDERS = [
+    r"C:\git\MyProject\docs",         # Документация
+    r"C:\git\MyProject\src\backend",   # Серверный код
+    r"C:\git\MyProject\src\shared",    # Общие модули
+    r"C:\git\wiki",                    # Вики
+]
+```
+
+### Какие файлы индексируются?
+
+Все текстовые: `.md`, `.txt`, `.py`, `.cs`, `.js`, `.ts`, `.java`, `.go`, `.yaml`, `.json`, `.xml`, `.html`, `.css`, и т.д.
+
+Бинарные файлы (картинки, .dll, .exe) пропускаются автоматически (при ошибке чтения файл просто игнорируется).
+
+### Как увеличить размер чанков?
+
+Если ответы теряют контекст (обрывки кода/текста), увеличьте размер чанков:
+
+```python
+result = vector_store.index_folder(
+    folder,
+    chunk_size=1500,      # Было 1000, стало 1500
+    chunk_overlap=200,    # Было 100, стало 200
+    reset=True,
+)
+```
+
+### Медленно работает?
+
+| Проблема | Решение |
+|----------|---------|
+| Индексация долгая | Индексируйте только нужные папки, а не весь моно-репо |
+| Ответ генерируется 30+ секунд | Нормально для CPU. С GPU NVIDIA — 2-5 секунд |
+| Хочу быстрее на CPU | Используйте модель поменьше: `ollama pull qwen2.5:1.5b` и `LLM_MODEL=qwen2.5:1.5b` |
+
+### Как обновить индекс после `git pull`?
+
+Запустите `python index_my_project.py` заново. Индекс пересоздастся с нуля — это самый надёжный способ.
+
+---
+
+## Устранение проблем
+
+### `ModuleNotFoundError: No module named 'chromadb'`
+
+Вы не в виртуальном окружении. Активируйте его:
+
+```cmd
+cd C:\git\OtusAiForDevs\RAG
+venv\Scripts\activate
+```
+
+### `ConnectionError: ... localhost:11434`
+
+Ollama не запущена. Запустите приложение Ollama (иконка в трее). Или в терминале:
+
+```cmd
+ollama serve
+```
+
+### `Python 3.14 ... ConfigError`
+
+ChromaDB не поддерживает Python 3.14. Установите 3.12 и пересоздайте venv:
+
+```cmd
+py -3.12 -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Claude Code не видит MCP-сервер
+
+Проверьте, что сервер добавлен:
+
+```cmd
+claude mcp list
+```
+
+Если `rag-knowledge-base` нет в списке — добавьте заново (Шаг 5.2).
+
+### Не индексируются файлы с кириллицей в пути
+
+Убедитесь, что пути не содержат нестандартных символов. Если есть проблемы — скопируйте файлы в папку с ASCII-путём (например, `C:\git\wiki`).
+
+---
+
+## Итого: 6 шагов
+
+| Шаг | Что делаем | Время |
+|-----|-----------|-------|
+| 1 | Установить Python 3.12 | 5 мин |
+| 2 | Установить Ollama + модели | 10 мин |
+| 3 | Клонировать RAG + `pip install` | 5 мин |
+| 4 | Запустить `index_my_project.py` | 2-10 мин |
+| 5 | `claude mcp add` | 1 мин |
+| 6 | Задавать вопросы в VS Code | --- |
+
+**Общее время установки с нуля: ~25 минут** (включая скачивание моделей).
