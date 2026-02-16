@@ -44,6 +44,22 @@ SKIP_DIRS = {
     "coverage", "logs",
 }
 
+# Filename patterns to skip (generated/minified files)
+SKIP_SUFFIXES = (
+    ".designer.cs", ".generated.cs", ".g.cs", ".g.i.cs",
+    ".assemblyinfo.cs", ".globalusings.g.cs",
+    ".min.js", ".min.css", ".bundle.js", ".chunk.js",
+    "-lock.json",
+)
+SKIP_FILENAMES = {
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "composer.lock", "gemfile.lock", "poetry.lock",
+    ".ds_store", "thumbs.db",
+}
+
+# Max file size to index (bytes) — larger files are usually generated
+MAX_FILE_SIZE = 100 * 1024  # 100 KB
+
 
 # Default configuration (with env var support for Docker)
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -89,8 +105,8 @@ class VectorStore:
     def index_folder(
         self,
         folder_path: str,
-        chunk_size: int = 1000,
-        chunk_overlap: int = 100,
+        chunk_size: int = 2000,
+        chunk_overlap: int = 200,
         reset: bool = False,
     ) -> Dict[str, Any]:
         """Index all documents in a folder."""
@@ -103,9 +119,13 @@ class VectorStore:
                 pass
 
         def _ts(start: float) -> str:
-            elapsed = time.time() - start
-            m, s = divmod(int(elapsed), 60)
-            return f"[{m:02d}:{s:02d}]"
+            elapsed = int(time.time() - start)
+            if elapsed < 3600:
+                m, s = divmod(elapsed, 60)
+                return f"[{m:02d}:{s:02d}]"
+            h, remainder = divmod(elapsed, 3600)
+            m, s = divmod(remainder, 60)
+            return f"[{h}:{m:02d}:{s:02d}]"
 
         t0 = time.time()
 
@@ -119,8 +139,21 @@ class VectorStore:
             parts_lower = {p.lower() for p in file_path.relative_to(folder_path).parts[:-1]}
             if parts_lower & SKIP_DIRS:
                 continue
-            if file_path.suffix.lower() in TEXT_EXTENSIONS:
-                files.append(file_path)
+            if file_path.suffix.lower() not in TEXT_EXTENSIONS:
+                continue
+            # Skip generated/minified files
+            name_lower = file_path.name.lower()
+            if name_lower in SKIP_FILENAMES:
+                continue
+            if any(name_lower.endswith(s) for s in SKIP_SUFFIXES):
+                continue
+            # Skip large files (likely generated)
+            try:
+                if file_path.stat().st_size > MAX_FILE_SIZE:
+                    continue
+            except OSError:
+                continue
+            files.append(file_path)
         print(f" найдено {len(files)} файлов")
 
         # Load documents
@@ -148,7 +181,7 @@ class VectorStore:
         print(f"  {_ts(t0)} Чанков для индексации: {len(chunks)}")
 
         # Index in batches
-        batch_size = 50
+        batch_size = 200
         indexed = 0
         total_batches = (len(chunks) + batch_size - 1) // batch_size
         for batch_num, i in enumerate(range(0, len(chunks), batch_size), 1):
