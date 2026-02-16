@@ -86,6 +86,7 @@ DEFAULT_CHROMA_PATH = os.environ.get("CHROMA_PATH", "./chroma_db")
 DEFAULT_COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "documents")
 DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "800"))
 DEFAULT_CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
+DEFAULT_BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "200"))
 DEFAULT_VECTOR_WEIGHT = float(os.environ.get("VECTOR_WEIGHT", "0.3"))
 
 
@@ -209,7 +210,7 @@ class VectorStore:
         print(f"  {_ts(t0)} Чанков для индексации: {len(chunks)}")
 
         # Index in batches
-        batch_size = 200
+        batch_size = DEFAULT_BATCH_SIZE
         indexed = 0
         total_batches = (len(chunks) + batch_size - 1) // batch_size
         for batch_num, i in enumerate(range(0, len(chunks), batch_size), 1):
