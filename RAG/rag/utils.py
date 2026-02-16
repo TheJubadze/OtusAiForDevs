@@ -21,6 +21,14 @@ try:
 except ImportError:
     HAS_BM25 = False
 
+try:
+    import snowballstemmer
+    _stemmer = snowballstemmer.stemmer("russian")
+    HAS_STEMMER = True
+except ImportError:
+    _stemmer = None
+    HAS_STEMMER = False
+
 # Text file extensions to index (code, docs, config)
 TEXT_EXTENSIONS = {
     ".md", ".txt", ".rst", ".adoc",
@@ -226,8 +234,11 @@ class VectorStore:
 
     @staticmethod
     def _tokenize(text: str) -> List[str]:
-        """Simple whitespace + punctuation tokenizer for BM25."""
-        return re.findall(r'[a-zA-Zа-яА-ЯёЁ0-9]+', text.lower())
+        """Tokenizer for BM25 with optional Russian stemming."""
+        tokens = re.findall(r'[a-zA-Zа-яА-ЯёЁ0-9]+', text.lower())
+        if HAS_STEMMER:
+            tokens = [_stemmer.stemWord(t) for t in tokens]
+        return tokens
 
     def _build_bm25_index(self):
         """Build BM25 index from all documents in the collection."""
@@ -275,7 +286,7 @@ class VectorStore:
 
         return docs
 
-    def hybrid_search(self, query: str, n_results: int = 5, vector_weight: float = 0.5) -> List[Dict[str, Any]]:
+    def hybrid_search(self, query: str, n_results: int = 5, vector_weight: float = 0.3) -> List[Dict[str, Any]]:
         """Hybrid search combining vector similarity and BM25 keyword matching."""
         # Vector search (fetch more candidates for merging)
         vector_results = self.search(query, n_results=n_results * 2)

@@ -31,6 +31,7 @@ chroma_db/
 chroma_db_v2/
 chroma_db_v3/
 chroma_db_langgraph/
+pdd_db/
 
 # IDE
 .idea/

@@ -7,9 +7,10 @@
 
 import os
 from dotenv import load_dotenv
-from rag.utils import VectorStore
 
 load_dotenv()
+
+from rag.utils import VectorStore
 
 FOLDERS = os.environ.get("INDEX_FOLDERS", "./sample_docs").split(";")
 CHROMA_PATH = os.environ.get("CHROMA_PATH", "./chroma_db")
