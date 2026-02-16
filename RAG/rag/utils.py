@@ -23,7 +23,8 @@ except ImportError:
 
 try:
     import snowballstemmer
-    _stemmer = snowballstemmer.stemmer("russian")
+    _stemmer_lang = os.environ.get("STEMMER_LANG", "russian")
+    _stemmer = snowballstemmer.stemmer(_stemmer_lang)
     HAS_STEMMER = True
 except ImportError:
     _stemmer = None
@@ -85,6 +86,7 @@ DEFAULT_CHROMA_PATH = os.environ.get("CHROMA_PATH", "./chroma_db")
 DEFAULT_COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "documents")
 DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "800"))
 DEFAULT_CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
+DEFAULT_VECTOR_WEIGHT = float(os.environ.get("VECTOR_WEIGHT", "0.3"))
 
 
 class VectorStore:
@@ -286,7 +288,7 @@ class VectorStore:
 
         return docs
 
-    def hybrid_search(self, query: str, n_results: int = 5, vector_weight: float = 0.3) -> List[Dict[str, Any]]:
+    def hybrid_search(self, query: str, n_results: int = 5, vector_weight: float = DEFAULT_VECTOR_WEIGHT) -> List[Dict[str, Any]]:
         """Hybrid search combining vector similarity and BM25 keyword matching."""
         # Vector search (fetch more candidates for merging)
         vector_results = self.search(query, n_results=n_results * 2)
