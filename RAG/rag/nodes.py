@@ -48,17 +48,17 @@ def create_nodes(vector_store: VectorStore, llm: LLM):
 
 
     def retrieve(state: RAGState) -> Dict[str, Any]:
-        """Retrieve documents from vector store."""
+        """Retrieve documents from vector store using hybrid search."""
 
         query = state.get("rewritten_query") or state["original_query"]
 
-        results = vector_store.search(query, n_results=5)
+        results = vector_store.hybrid_search(query, n_results=10)
 
         docs = [
             Document(
                 content=r["content"],
                 source=r["source"],
-                relevance_score=1 - r["distance"] if r["distance"] else None,
+                relevance_score=1 - r["distance"] if r["distance"] else r.get("score"),
             )
             for r in results
         ]
