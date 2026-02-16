@@ -4,6 +4,7 @@ Corrective RAG: Utilities for ChromaDB and Ollama.
 
 import os
 import sys
+import time
 import chromadb
 import chromadb.utils.embedding_functions as ef
 import ollama
@@ -101,8 +102,15 @@ class VectorStore:
             except Exception:
                 pass
 
+        def _ts(start: float) -> str:
+            elapsed = time.time() - start
+            m, s = divmod(int(elapsed), 60)
+            return f"[{m:02d}:{s:02d}]"
+
+        t0 = time.time()
+
         # Collect text files, skipping irrelevant directories
-        print("  Сканирую файлы...", end="", flush=True)
+        print(f"  {_ts(t0)} Сканирую файлы...", end="", flush=True)
         files = []
         for file_path in Path(folder_path).rglob("*"):
             if not file_path.is_file():
@@ -120,14 +128,14 @@ class VectorStore:
         errors = 0
         for i, file_path in enumerate(files, 1):
             if i % 200 == 0 or i == len(files):
-                print(f"  Загрузка: {i}/{len(files)}", flush=True)
+                print(f"  {_ts(t0)} Загрузка: {i}/{len(files)}", flush=True)
             try:
                 loader = TextLoader(str(file_path), autodetect_encoding=True)
                 documents.extend(loader.load())
             except Exception:
                 errors += 1
         if errors:
-            print(f"  Пропущено (ошибки чтения): {errors}")
+            print(f"  {_ts(t0)} Пропущено (ошибки чтения): {errors}")
 
         # Split into chunks
         splitter = RecursiveCharacterTextSplitter(
@@ -137,7 +145,7 @@ class VectorStore:
         )
         chunks = splitter.split_documents(documents)
         chunks = [c for c in chunks if c.page_content.strip()]
-        print(f"  Чанков для индексации: {len(chunks)}")
+        print(f"  {_ts(t0)} Чанков для индексации: {len(chunks)}")
 
         # Index in batches
         batch_size = 50
@@ -153,9 +161,11 @@ class VectorStore:
                 )
                 indexed += len(batch)
             except Exception as e:
-                print(f"  Ошибка батча {batch_num}: {e}")
+                print(f"  {_ts(t0)} Ошибка батча {batch_num}: {e}")
             if batch_num % 10 == 0 or batch_num == total_batches:
-                print(f"  Эмбеддинг: {batch_num}/{total_batches} батчей ({indexed} чанков)", flush=True)
+                print(f"  {_ts(t0)} Эмбеддинг: {batch_num}/{total_batches} батчей ({indexed} чанков)", flush=True)
+
+        print(f"  {_ts(t0)} Готово!")
 
         return {
             "documents_loaded": len(documents),
