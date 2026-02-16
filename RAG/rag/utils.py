@@ -3,6 +3,7 @@ Corrective RAG: Utilities for ChromaDB and Ollama.
 """
 
 import os
+import sys
 import chromadb
 import chromadb.utils.embedding_functions as ef
 import ollama
@@ -28,6 +29,18 @@ TEXT_EXTENSIONS = {
     ".dockerfile", ".tf", ".hcl",
     ".env", ".properties", ".gradle",
     ".csv",
+}
+
+# Directories to skip during indexing
+SKIP_DIRS = {
+    "node_modules", "bin", "obj", "debug", "release",
+    ".git", ".svn", ".hg",
+    ".vs", ".idea", ".vscode",
+    "__pycache__", ".mypy_cache", ".pytest_cache",
+    "packages", "testresults",
+    "dist", "build", "out", "target",
+    ".nuget", ".terraform",
+    "coverage", "logs",
 }
 
 
@@ -88,20 +101,33 @@ class VectorStore:
             except Exception:
                 pass
 
-        # Load only text files with known extensions
-        documents = []
-        skipped = 0
+        # Collect text files, skipping irrelevant directories
+        print("  Сканирую файлы...", end="", flush=True)
+        files = []
         for file_path in Path(folder_path).rglob("*"):
             if not file_path.is_file():
                 continue
-            if file_path.suffix.lower() not in TEXT_EXTENSIONS:
-                skipped += 1
+            # Skip files inside excluded directories
+            parts_lower = {p.lower() for p in file_path.relative_to(folder_path).parts[:-1]}
+            if parts_lower & SKIP_DIRS:
                 continue
+            if file_path.suffix.lower() in TEXT_EXTENSIONS:
+                files.append(file_path)
+        print(f" найдено {len(files)} файлов")
+
+        # Load documents
+        documents = []
+        errors = 0
+        for i, file_path in enumerate(files, 1):
+            if i % 200 == 0 or i == len(files):
+                print(f"  Загрузка: {i}/{len(files)}", flush=True)
             try:
                 loader = TextLoader(str(file_path), autodetect_encoding=True)
                 documents.extend(loader.load())
             except Exception:
-                skipped += 1
+                errors += 1
+        if errors:
+            print(f"  Пропущено (ошибки чтения): {errors}")
 
         # Split into chunks
         splitter = RecursiveCharacterTextSplitter(
@@ -110,14 +136,14 @@ class VectorStore:
             separators=["\n## ", "\n### ", "\n\n", "\n", " "],
         )
         chunks = splitter.split_documents(documents)
-
-        # Filter out empty chunks
         chunks = [c for c in chunks if c.page_content.strip()]
+        print(f"  Чанков для индексации: {len(chunks)}")
 
         # Index in batches
-        batch_size = 20
+        batch_size = 50
         indexed = 0
-        for i in range(0, len(chunks), batch_size):
+        total_batches = (len(chunks) + batch_size - 1) // batch_size
+        for batch_num, i in enumerate(range(0, len(chunks), batch_size), 1):
             batch = chunks[i : i + batch_size]
             try:
                 self.collection.add(
@@ -127,7 +153,9 @@ class VectorStore:
                 )
                 indexed += len(batch)
             except Exception as e:
-                print(f"Warning: batch {i}-{i+len(batch)} failed: {e}")
+                print(f"  Ошибка батча {batch_num}: {e}")
+            if batch_num % 10 == 0 or batch_num == total_batches:
+                print(f"  Эмбеддинг: {batch_num}/{total_batches} батчей ({indexed} чанков)", flush=True)
 
         return {
             "documents_loaded": len(documents),
