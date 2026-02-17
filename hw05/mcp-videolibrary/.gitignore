@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Секреты
+config.json
+claude_desktop_config.json
+
+# Логи и временные файлы
+*.log
+*.tmp

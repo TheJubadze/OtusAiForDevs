@@ -1,0 +1,16 @@
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+mcp-videolibrary/mcp_server.log

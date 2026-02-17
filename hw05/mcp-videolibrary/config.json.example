@@ -1,0 +1,8 @@
+{
+  "videos_root": "T:\\",
+  "movies_folder": "Movies",
+  "cartoons_folder": "Cartoons",
+  "video_extensions": [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts", ".m2ts"],
+  "tmdb_api_key": "YOUR_TMDB_API_KEY",
+  "kinopoisk_api_key": "YOUR_KINOPOISK_API_KEY"
+}
