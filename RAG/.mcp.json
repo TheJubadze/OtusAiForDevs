@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "rag-knowledge-base": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "d:\\Dev\\OtusAiForDevs\\RAG\\server.py"
+      ],
+      "env": {
+        "CHROMA_PATH": "d:\\Dev\\OtusAiForDevs\\RAG\\pdd_db",
+        "COLLECTION_NAME": "pdd"
+      }
+    }
+  }
+}
