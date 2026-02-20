@@ -337,6 +337,7 @@ RAG/
 ├── .env.example                # Шаблон переменных окружения
 ├── .mcp.json                   # Конфигурация MCP для Claude Code
 ├── SETUP.md                    # Пошаговая установка: LITE (без LLM) и FULL (с LLM)
+├── ARCHITECTURE.md             # Подробное описание архитектуры
 ├── REPORT.md                   # История разработки
 └── README.md                   # Эта инструкция
 ```
