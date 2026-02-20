@@ -329,7 +329,9 @@ RAG/
 ├── docker-compose.yml          # GPU версия
 ├── docker-compose.cpu.yml      # CPU версия
 ├── requirements.txt
-├── QUICKSTART.md               # Инструкция для быстрого старта
+├── README_QUICKSTART.md        # Выбор варианта установки
+├── README_LITE.md              # Установка без локальной LLM (рекомендуется)
+├── README_FULL.md              # Установка с локальной LLM (автономный режим)
 ├── REPORT.md                   # История разработки
 └── README.md                   # Эта инструкция
 ```

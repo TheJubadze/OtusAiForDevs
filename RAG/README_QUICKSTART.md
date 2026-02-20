@@ -2,7 +2,7 @@
 
 Два варианта установки — выберите подходящий:
 
-## [QUICKSTART_LITE.md](QUICKSTART_LITE.md) — Рекомендуемый
+## [README_LITE.md](README_LITE.md) — Рекомендуемый
 
 **RAG + Claude (без локальной LLM)**
 
@@ -15,7 +15,7 @@
 
 ---
 
-## [QUICKSTART_FULL.md](QUICKSTART_FULL.md) — Полная версия
+## [README_FULL.md](README_FULL.md) — Полная версия
 
 **RAG с локальной LLM (полностью автономный)**
 
