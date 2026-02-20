@@ -8,31 +8,46 @@ MCP-сервер, который превращает папку с докуме
 
 Готовый образ с демо-базой «Правила движения единорогов по Тилимилитрямдии» — никакой настройки, только Docker.
 
-**Требования:** Docker Desktop
+**Требования:** Docker Desktop + Claude Code (`npm install -g @anthropic-ai/claude-code`)
+
+### Шаг 1 — Скачать конфигурацию и запустить
 
 ```bash
-# 1. Скачать и запустить (при первом запуске загрузит ~2.7 GB моделей)
-docker compose -f https://raw.githubusercontent.com/TheJubadze/OtusAiForDevs/project/RAG/docker-compose.pdd.yml up -d
+curl -O https://raw.githubusercontent.com/TheJubadze/OtusAiForDevs/project/RAG/docker-compose.pdd.yml
+docker compose -f docker-compose.pdd.yml up -d
 ```
 
-> Или клонируй репо и запусти локально:
-> ```bash
-> git clone https://github.com/TheJubadze/OtusAiForDevs.git
-> cd OtusAiForDevs/RAG
-> docker compose -f docker-compose.pdd.yml up -d
-> ```
+### Шаг 2 — Дождаться загрузки моделей (~5–15 мин при первом запуске)
 
 ```bash
-# 2. Подключить к Claude Code (один раз)
+docker compose -f docker-compose.pdd.yml logs -f
+```
+
+Ждать сообщения в логах: `Модели готовы!`
+После этого нажать `Ctrl+C` — контейнеры продолжат работать в фоне.
+
+> **Примечание:** ~2.7 GB моделей скачиваются только при первом запуске.
+> При повторных запусках старт занимает несколько секунд.
+
+### Шаг 3 — Подключить к Claude Code (один раз)
+
+```bash
 claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
 ```
 
-```bash
-# 3. Спросить в чате Claude:
-# "Какой сигнал подаёт единорог перед обгоном?"
-# "Как работает лунный светофор?"
-# "Что такое радуготропа?"
+### Шаг 4 — Спросить в Claude Code
+
+Открыть VS Code → запустить Claude Code (`Ctrl+Shift+P` → "Claude: Open Chat") → задать вопрос:
+
 ```
+Какой сигнал подаёт единорог перед обгоном?
+Как работает лунный светофор?
+Что такое радуготропа?
+```
+
+Claude автоматически воспользуется базой знаний ПДД Тилимилитрямдии.
+
+---
 
 Образ на Docker Hub: [`thejubadze/pdd-unicorn`](https://hub.docker.com/r/thejubadze/pdd-unicorn)
 
