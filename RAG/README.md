@@ -10,21 +10,20 @@ MCP-сервер, который превращает папку с докуме
 
 **Требования:** Docker Desktop + Claude Code (`npm install -g @anthropic-ai/claude-code`)
 
-### Шаг 1 — Скачать конфигурацию и запустить
+### Шаг 1 — Запустить
 
 ```bash
-curl -O https://raw.githubusercontent.com/TheJubadze/OtusAiForDevs/project/RAG/docker-compose.pdd.yml
-docker compose -f docker-compose.pdd.yml up -d
+docker run -d -p 8000:8000 -v pdd-ollama:/root/.ollama --name pdd-unicorn thejubadze/pdd-unicorn:latest
 ```
 
 ### Шаг 2 — Дождаться загрузки моделей (~5–15 мин при первом запуске)
 
 ```bash
-docker compose -f docker-compose.pdd.yml logs -f
+docker logs -f pdd-unicorn
 ```
 
-Ждать сообщения в логах: `Модели готовы!`
-После этого нажать `Ctrl+C` — контейнеры продолжат работать в фоне.
+Ждать сообщения: `Модели готовы!`
+После этого нажать `Ctrl+C` — контейнер продолжит работать в фоне.
 
 > **Примечание:** ~2.7 GB моделей скачиваются только при первом запуске.
 > При повторных запусках старт занимает несколько секунд.
@@ -289,8 +288,8 @@ ollama pull qwen2.5:1.5b
 
 **Docker: модели не скачиваются**
 ```bash
-docker compose ps
-docker compose logs ollama
+docker logs pdd-unicorn
+docker restart pdd-unicorn
 ```
 
 ---
