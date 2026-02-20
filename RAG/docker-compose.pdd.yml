@@ -1,0 +1,68 @@
+# Docker Compose для демо «Правила движения единорогов по Тилимилитрямдии»
+#
+# Запуск:
+#   docker compose -f docker-compose.pdd.yml up -d
+#
+# Подключение к Claude Code (после запуска):
+#   claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
+#
+# Вопросы в чате:
+#   "Какой сигнал издаёт единорог перед обгоном?"
+#   "Как работает лунный светофор?"
+
+services:
+
+  # Ollama — эмбеддинги (nomic-embed-text) + LLM (qwen2.5:3b)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pdd-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Загрузка моделей при первом запуске (~2.7 GB, только один раз)
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: pdd-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Скачиваю модели..."
+        ollama pull nomic-embed-text
+        ollama pull qwen2.5:3b
+        echo "Модели готовы!"
+    restart: "no"
+
+  # RAG MCP Server — база знаний ПДЕ-Т уже внутри образа
+  rag-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pdd-rag-server
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_PATH=/app/pdd_db
+      - COLLECTION_NAME=pdd
+      - LLM_MODEL=qwen2.5:3b
+      - OLLAMA_HOST=http://ollama:11434
+      - MCP_TRANSPORT=sse
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

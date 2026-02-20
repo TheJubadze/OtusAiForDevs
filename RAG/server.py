@@ -20,7 +20,7 @@ from rag.graph import build_graph
 # Initialize MCP server
 mcp = FastMCP(
     name="rag-knowledge-base",
-    description="RAG Knowledge Base с локальной LLM. Индексирует документы и отвечает на вопросы.",
+    instructions="RAG Knowledge Base с локальной LLM. Индексирует документы и отвечает на вопросы.",
 )
 
 
@@ -254,4 +254,8 @@ def index_status() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    if transport == "sse":
+        mcp.run(transport="sse", host="0.0.0.0", port=8000)
+    else:
+        mcp.run()

@@ -15,14 +15,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY rag/ ./rag/
 COPY server.py .
 
-# Create directories for data
-RUN mkdir -p /app/data /app/chroma_db
+# Copy pre-built index (unicorn traffic rules)
+COPY pdd_db/ ./pdd_db/
 
-# Environment variables
-ENV CHROMA_PATH=/app/chroma_db
-ENV COLLECTION_NAME=documents
+# Create directory for user-mounted docs
+RUN mkdir -p /app/data
+
+# Environment variables (defaults for unicorn demo)
+ENV CHROMA_PATH=/app/pdd_db
+ENV COLLECTION_NAME=pdd
 ENV LLM_MODEL=qwen2.5:3b
 ENV OLLAMA_HOST=http://ollama:11434
+ENV MCP_TRANSPORT=stdio
 
 EXPOSE 8000
 
