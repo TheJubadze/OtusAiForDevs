@@ -132,7 +132,24 @@ print(f"Источники: {response['sources']}")
 | `summarize_document` | "Сделай саммари файла architecture.md" |
 | `index_status` | "Покажи статус индекса" |
 
-### Вариант 3: Docker Compose
+### Вариант 3: Docker — демо с единорогами (готовый образ)
+
+Самый быстрый способ попробовать. База знаний «Правила движения единорогов по Тилимилитрямдии» уже внутри образа — индексировать ничего не нужно.
+
+```bash
+# Поднять стек (при первом запуске скачает ~2.7 GB моделей Ollama)
+docker compose -f docker-compose.pdd.yml up -d
+
+# Подключить к Claude Code
+claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
+
+# Остановка
+docker compose -f docker-compose.pdd.yml down
+```
+
+Образ на Docker Hub: [`thejubadze/pdd-unicorn`](https://hub.docker.com/r/thejubadze/pdd-unicorn)
+
+### Вариант 4: Docker Compose (своя база)
 
 ```bash
 # С GPU (NVIDIA)
