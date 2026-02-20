@@ -1,66 +1,75 @@
 # RAG Knowledge Base — MCP-сервер с локальной LLM
 
-MCP-сервер, который превращает локальную папку с документами в поисковую базу знаний. Внутри — Corrective RAG на LangGraph с локальной LLM через Ollama.
-
-## Возможности
-
-- **Индексация документов** — загрузка .md, .txt, .py и других текстовых файлов в векторную базу
-- **Умный поиск** — семантический поиск по содержимому документов
-- **Генерация ответов** — ответы на вопросы на основе найденных документов
-- **Corrective RAG** — переписывание запросов, оценка релевантности, проверка на галлюцинации
-- **MCP-интеграция** — работает с Claude Desktop и другими MCP-клиентами
-
-## Требования
-
-- Python 3.12+
-- [Ollama](https://ollama.com/download) (для локальных LLM)
-- Docker (опционально, для контейнеризации)
+MCP-сервер, который превращает папку с документами в базу знаний. Corrective RAG на LangGraph, ChromaDB, Ollama.
 
 ---
 
-## Быстрый старт
+## Попробовать прямо сейчас
 
-### 1. Установка Ollama
+Готовый образ с демо-базой «Правила движения единорогов по Тилимилитрямдии» — никакой настройки, только Docker.
 
-Скачайте и установите Ollama: https://ollama.com/download
+**Требования:** Docker Desktop
 
 ```bash
-# Проверка установки
-ollama --version
-
-# Скачивание моделей
-ollama pull qwen2.5:3b          # LLM для генерации (~2.4 GB)
-ollama pull nomic-embed-text     # Модель эмбеддингов (~274 MB)
+# 1. Скачать и запустить (при первом запуске загрузит ~2.7 GB моделей)
+docker compose -f https://raw.githubusercontent.com/TheJubadze/OtusAiForDevs/project/RAG/docker-compose.pdd.yml up -d
 ```
 
-### 2. Установка зависимостей Python
+> Или клонируй репо и запусти локально:
+> ```bash
+> git clone https://github.com/TheJubadze/OtusAiForDevs.git
+> cd OtusAiForDevs/RAG
+> docker compose -f docker-compose.pdd.yml up -d
+> ```
 
 ```bash
-# Клонирование репозитория
+# 2. Подключить к Claude Code (один раз)
+claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
+```
+
+```bash
+# 3. Спросить в чате Claude:
+# "Какой сигнал подаёт единорог перед обгоном?"
+# "Как работает лунный светофор?"
+# "Что такое радуготропа?"
+```
+
+Образ на Docker Hub: [`thejubadze/pdd-unicorn`](https://hub.docker.com/r/thejubadze/pdd-unicorn)
+
+---
+
+## Возможности
+
+- **Индексация документов** — .md, .txt, .py, .cs, .json и ещё 50+ форматов
+- **Гибридный поиск** — векторный (ChromaDB) + ключевой (BM25) с RRF-слиянием
+- **Corrective RAG** — переписывание запросов, фильтрация нерелевантных чанков, проверка на галлюцинации
+- **MCP-интеграция** — работает с Claude Code и Claude Desktop
+
+---
+
+## Установка для своего проекта
+
+Подробная пошаговая инструкция — [SETUP.md](SETUP.md).
+
+**Коротко:**
+
+```bash
 git clone https://github.com/TheJubadze/OtusAiForDevs.git
 cd OtusAiForDevs/RAG
 
-# Создание виртуального окружения
-python -m venv venv
-
-# Активация (Windows)
-venv\Scripts\activate
-
-# Активация (Linux/macOS)
-source venv/bin/activate
-
-# Установка зависимостей
+python -m venv venv && venv\Scripts\activate   # Windows
 pip install -r requirements.txt
+
+# Настроить .env и проиндексировать свои папки
+copy .env.example .env
+python index_my_project.py
+
+# Подключить к Claude Code
+claude mcp add rag-knowledge-base \
+  -e CHROMA_PATH=./chroma_db \
+  -e COLLECTION_NAME=my_project \
+  -- python server.py
 ```
-
-### 3. Проверка работы
-
-```bash
-# Запуск тестов
-python -m pytest tests/ -v
-```
-
-> Для пошаговой установки на Windows (включая индексацию своего проекта) — см. [SETUP.md](SETUP.md).
 
 ---
 
@@ -71,31 +80,21 @@ python -m pytest tests/ -v
 ```python
 from rag import create_rag_chain, ask_question
 
-# Создание RAG цепочки
 chain, vector_store, llm = create_rag_chain(
     chroma_path="./chroma_db",
     collection_name="my_docs",
 )
 
-# Индексация папки с документами
 result = vector_store.index_folder("./my_documents", reset=True)
-print(f"Проиндексировано: {result['chunks_indexed']} чанков")
-
-# Задать вопрос
 response = ask_question("Как работает авторизация?", chain=chain)
 print(response["answer"])
-print(f"Источники: {response['sources']}")
 ```
 
 ### Вариант 2: MCP-сервер с Claude Desktop
 
-#### Шаг 1: Настройка Claude Desktop
-
 Откройте файл конфигурации Claude Desktop:
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-Добавьте конфигурацию сервера:
 
 ```json
 {
@@ -114,42 +113,7 @@ print(f"Источники: {response['sources']}")
 }
 ```
 
-> **Важно:** Замените `C:\\path\\to\\RAG` на реальный путь к папке проекта.
-
-#### Шаг 2: Перезапустите Claude Desktop
-
-После изменения конфигурации перезапустите Claude Desktop.
-
-#### Шаг 3: Использование инструментов
-
-В чате Claude Desktop станут доступны 5 инструментов:
-
-| Инструмент | Пример использования |
-|------------|---------------------|
-| `index_folder` | "Проиндексируй папку C:\docs" |
-| `ask_question` | "Как работает авторизация в системе?" |
-| `find_relevant_docs` | "Найди документы про API" |
-| `summarize_document` | "Сделай саммари файла architecture.md" |
-| `index_status` | "Покажи статус индекса" |
-
-### Вариант 3: Docker — демо с единорогами (готовый образ)
-
-Самый быстрый способ попробовать. База знаний «Правила движения единорогов по Тилимилитрямдии» уже внутри образа — индексировать ничего не нужно.
-
-```bash
-# Поднять стек (при первом запуске скачает ~2.7 GB моделей Ollama)
-docker compose -f docker-compose.pdd.yml up -d
-
-# Подключить к Claude Code
-claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
-
-# Остановка
-docker compose -f docker-compose.pdd.yml down
-```
-
-Образ на Docker Hub: [`thejubadze/pdd-unicorn`](https://hub.docker.com/r/thejubadze/pdd-unicorn)
-
-### Вариант 4: Docker Compose (своя база)
+### Вариант 3: Docker (своя база)
 
 ```bash
 # С GPU (NVIDIA)
@@ -158,136 +122,64 @@ docker compose up -d
 # Без GPU (CPU-only)
 docker compose -f docker-compose.cpu.yml up -d
 
-# Просмотр логов
+# Логи / остановка
 docker compose logs -f rag-server
-
-# Остановка
 docker compose down
 ```
-
-При первом запуске автоматически скачиваются модели Ollama (~2.7 GB).
 
 ---
 
 ## MCP-инструменты
 
+| Инструмент | Описание |
+|------------|----------|
+| `index_folder` | Индексирует папку в ChromaDB |
+| `ask_question` | Полный Corrective RAG пайплайн |
+| `find_relevant_docs` | Поиск без генерации ответа |
+| `summarize_document` | Краткое содержание файла |
+| `index_status` | Статус индекса |
+
+Подробное описание с параметрами и примерами — ниже.
+
+<details>
+<summary>Подробнее о каждом инструменте</summary>
+
 ### index_folder
 
-Индексирует папку с документами в векторную базу данных.
-
 ```
-Параметры:
-- folder_path (string, required): Путь к папке с документами
-- chunk_size (int, default=800): Размер чанка в символах
-- chunk_overlap (int, default=100): Перекрытие между чанками
-- reset (bool, default=False): Пересоздать индекс с нуля
-
-Возвращает: Статистику индексации
-```
-
-**Пример:**
-```
-> Проиндексируй папку ./sample_docs с нуля
-
-Индексация завершена:
-- Загружено документов: 21
-- Создано чанков: 104
-- Всего в индексе: 104
+folder_path  (string, required) — путь к папке
+chunk_size   (int, default=800) — размер чанка в символах
+chunk_overlap(int, default=100) — перекрытие между чанками
+reset        (bool, default=False) — пересоздать с нуля
 ```
 
 ### ask_question
 
-Задаёт вопрос по индексированным документам (полный RAG-пайплайн).
-
 ```
-Параметры:
-- question (string, required): Вопрос на естественном языке
-- max_retries (int, default=2): Максимум повторных попыток
-
-Возвращает: Ответ с указанием источников
-```
-
-**Пример:**
-```
-> Как работает авторизация в системе?
-
-Авторизация реализована через JWT токены. Access token живёт 15 минут,
-refresh token — 7 дней. При истечении access token клиент должен
-обновить его через endpoint /auth/refresh.
-
-📎 Источники: auth_flow.md, auth_api.md
+question    (string, required) — вопрос на естественном языке
+max_retries (int, default=2)   — максимум повторных попыток
 ```
 
 ### find_relevant_docs
 
-Ищет релевантные документы без генерации ответа.
-
 ```
-Параметры:
-- query (string, required): Поисковый запрос
-- n_results (int, default=5): Количество результатов
-
-Возвращает: Список документов с превью
-```
-
-**Пример:**
-```
-> Найди документы про RabbitMQ
-
-1. **troubleshooting.md** (score: 0.89)
-   ## RabbitMQ не принимает сообщения Проверьте: 1. Статус сервиса...
-
-2. **notification_service.md** (score: 0.76)
-   Сервис уведомлений использует RabbitMQ для асинхронной обработки...
+query     (string, required) — поисковый запрос
+n_results (int, default=5)   — количество результатов
 ```
 
 ### summarize_document
 
-Создаёт краткое содержание документа.
-
 ```
-Параметры:
-- file_path (string, required): Путь к файлу документа
-
-Возвращает: Краткое содержание
+file_path (string, required) — путь к файлу
 ```
 
-**Пример:**
-```
-> Сделай саммари файла ./sample_docs/architecture.md
-
-📄 **architecture.md**
-
-• Микросервисная архитектура с 5 основными сервисами
-• API Gateway на Kong для маршрутизации и rate limiting
-• PostgreSQL как основная БД, Redis для кэширования
-• RabbitMQ для асинхронного взаимодействия между сервисами
-• Kubernetes для оркестрации в production
-```
-
-### index_status
-
-Показывает статус индекса.
-
-```
-Параметры: нет
-
-Возвращает: Информацию о состоянии индекса
-```
-
-**Пример:**
-```
-> Покажи статус индекса
-
-📊 Статус индекса:
-- Коллекция: documents
-- Чанков в индексе: 104
-- Путь к базе: ./chroma_db
-```
+</details>
 
 ---
 
 ## Архитектура
+
+Подробное описание — [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### Corrective RAG граф
 
@@ -312,126 +204,75 @@ START → rewrite_query → retrieve → grade_chunks → [conditional]
           END
 ```
 
-### Узлы графа
-
-| Узел | Описание |
-|------|----------|
-| `rewrite_query` | LLM переписывает запрос для улучшения поиска |
-| `retrieve` | Гибридный поиск в ChromaDB (10 чанков) |
-| `grade_chunks` | LLM оценивает релевантность каждого чанка |
-| `generate` | Генерация ответа на основе релевантных чанков |
-| `hallucination_check` | LLM проверяет, основан ли ответ на контексте |
-| `prepare_retry` | Подготовка к повторной попытке |
-| `finalize` | Финализация результата |
-
 ### Структура проекта
 
 ```
 RAG/
 ├── rag/                        # Модуль Corrective RAG
-│   ├── __init__.py
 │   ├── state.py                # RAGState TypedDict
 │   ├── utils.py                # VectorStore, LLM
 │   ├── nodes.py                # Узлы графа
 │   └── graph.py                # LangGraph граф
 ├── tests/                      # 42 pytest теста
-│   ├── conftest.py             # Фикстуры
-│   ├── test_state.py
-│   ├── test_utils.py
-│   ├── test_nodes.py
-│   ├── test_graph.py
-│   └── test_server.py
 ├── sample_docs/                # 21 демо-документ
 ├── pdd_docs/                   # Тестовая база знаний (ПДД единорогов)
 ├── server.py                   # FastMCP сервер
-├── chat.py                     # Интерактивный чат с RAG (CLI)
-├── index_my_project.py         # Скрипт индексации пользовательских папок
-├── pyproject.toml              # Конфигурация пакета и pytest
-├── Dockerfile
-├── docker-compose.yml          # GPU версия
-├── docker-compose.cpu.yml      # CPU версия
-├── requirements.txt
+├── index_my_project.py         # Скрипт индексации своих папок
+├── docker-compose.pdd.yml      # Демо с единорогами (готовый образ)
+├── docker-compose.yml          # GPU версия (своя база)
+├── docker-compose.cpu.yml      # CPU версия (своя база)
 ├── .env.example                # Шаблон переменных окружения
-├── .mcp.json                   # Конфигурация MCP для Claude Code
-├── SETUP.md                    # Пошаговая установка: LITE (без LLM) и FULL (с LLM)
-├── ARCHITECTURE.md             # Подробное описание архитектуры
-├── REPORT.md                   # История разработки
-└── README.md                   # Эта инструкция
+├── SETUP.md                    # Пошаговая установка
+├── ARCHITECTURE.md             # Архитектура
+└── REPORT.md                   # История разработки
 ```
 
 ---
 
 ## Конфигурация
 
-### Переменные окружения
-
 | Переменная | Default | Описание |
 |------------|---------|----------|
-| `OLLAMA_HOST` | `http://localhost:11434` | Адрес Ollama сервера |
-| `CHROMA_PATH` | `./chroma_db` | Путь к базе ChromaDB |
+| `OLLAMA_HOST` | `http://localhost:11434` | Адрес Ollama |
+| `CHROMA_PATH` | `./chroma_db` | Путь к ChromaDB |
 | `COLLECTION_NAME` | `documents` | Имя коллекции |
 | `LLM_MODEL` | `qwen2.5:3b` | Модель LLM |
-
-### Параметры индексации
-
-| Параметр | Default | Описание |
-|----------|---------|----------|
-| `chunk_size` | 800 | Размер чанка в символах |
-| `chunk_overlap` | 100 | Перекрытие между чанками |
+| `CHUNK_SIZE` | `800` | Размер чанка |
+| `VECTOR_WEIGHT` | `0.3` | Вес векторного поиска (0–1) |
 
 ---
 
 ## Тестирование
 
 ```bash
-# Запуск всех тестов
-pytest
-
-# С подробным выводом
-pytest -v
-
-# Конкретный файл
-pytest tests/test_nodes.py
-
-# С покрытием
-pytest --cov=rag --cov=server --cov-report=html
+pytest                                          # все тесты
+pytest -v                                       # с подробным выводом
+pytest tests/test_nodes.py                      # конкретный файл
+pytest --cov=rag --cov=server --cov-report=html # с покрытием
 ```
 
 ---
 
 ## Troubleshooting
 
-### Ollama не запускается
-
+**Ollama не запускается**
 ```bash
-# Проверка статуса
 ollama list
-
-# Если пусто — скачайте модели
-ollama pull qwen2.5:3b
 ollama pull nomic-embed-text
+ollama pull qwen2.5:3b
 ```
 
-### ChromaDB ошибка с Python 3.14
-
-ChromaDB не поддерживает Python 3.14. Используйте Python 3.12:
-
+**ChromaDB ошибка с Python 3.14** — используйте Python 3.12:
 ```bash
 py -3.12 -m venv venv
 ```
 
-### Медленная генерация ответов
+**Медленная генерация** — нормально для CPU (10–30 с). Для ускорения:
+```bash
+ollama pull qwen2.5:1.5b
+```
 
-- На CPU генерация занимает 10-30 секунд
-- Для ускорения используйте GPU (NVIDIA) или меньшую модель:
-  ```bash
-  ollama pull qwen2.5:1.5b  # Быстрее, но менее точная
-  ```
-
-### Docker: модели не скачиваются
-
-Проверьте, что контейнер `ollama` запущен и здоров:
-
+**Docker: модели не скачиваются**
 ```bash
 docker compose ps
 docker compose logs ollama
