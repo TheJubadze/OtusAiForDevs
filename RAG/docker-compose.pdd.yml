@@ -47,9 +47,7 @@ services:
 
   # RAG MCP Server — база знаний ПДЕ-Т уже внутри образа
   rag-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: thejubadze/pdd-unicorn:latest
     container_name: pdd-rag-server
     depends_on:
       ollama-pull:
