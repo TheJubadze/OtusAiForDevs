@@ -4,7 +4,6 @@ Corrective RAG: Utilities for ChromaDB and Ollama.
 
 import os
 import re
-import sys
 import time
 import chromadb
 import chromadb.utils.embedding_functions as ef

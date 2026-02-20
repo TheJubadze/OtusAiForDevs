@@ -16,6 +16,8 @@ dependencies = [
     "ollama>=0.3.0,<1.0",
     "fastmcp>=0.1.0,<1.0",
     "python-dotenv>=1.0.0,<2.0",
+    "rank-bm25>=0.2.2,<1.0",
+    "snowballstemmer>=2.0.0,<4.0",
 ]
 
 [project.optional-dependencies]
