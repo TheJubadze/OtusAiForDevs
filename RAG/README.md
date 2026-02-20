@@ -159,7 +159,7 @@ docker compose down
 ```
 Параметры:
 - folder_path (string, required): Путь к папке с документами
-- chunk_size (int, default=1000): Размер чанка в символах
+- chunk_size (int, default=800): Размер чанка в символах
 - chunk_overlap (int, default=100): Перекрытие между чанками
 - reset (bool, default=False): Пересоздать индекс с нуля
 
@@ -298,7 +298,7 @@ START → rewrite_query → retrieve → grade_chunks → [conditional]
 | Узел | Описание |
 |------|----------|
 | `rewrite_query` | LLM переписывает запрос для улучшения поиска |
-| `retrieve` | Поиск в ChromaDB (5 чанков) |
+| `retrieve` | Гибридный поиск в ChromaDB (10 чанков) |
 | `grade_chunks` | LLM оценивает релевантность каждого чанка |
 | `generate` | Генерация ответа на основе релевантных чанков |
 | `hallucination_check` | LLM проверяет, основан ли ответ на контексте |
@@ -323,12 +323,17 @@ RAG/
 │   ├── test_graph.py
 │   └── test_server.py
 ├── sample_docs/                # 21 демо-документ
+├── pdd_docs/                   # Тестовая база знаний (ПДД единорогов)
 ├── server.py                   # FastMCP сервер
+├── chat.py                     # Интерактивный чат с RAG (CLI)
+├── index_my_project.py         # Скрипт индексации пользовательских папок
 ├── pyproject.toml              # Конфигурация пакета и pytest
 ├── Dockerfile
 ├── docker-compose.yml          # GPU версия
 ├── docker-compose.cpu.yml      # CPU версия
 ├── requirements.txt
+├── .env.example                # Шаблон переменных окружения
+├── .mcp.json                   # Конфигурация MCP для Claude Code
 ├── README_QUICKSTART.md        # Выбор варианта установки
 ├── README_LITE.md              # Установка без локальной LLM (рекомендуется)
 ├── README_FULL.md              # Установка с локальной LLM (автономный режим)
@@ -353,7 +358,7 @@ RAG/
 
 | Параметр | Default | Описание |
 |----------|---------|----------|
-| `chunk_size` | 1000 | Размер чанка в символах |
+| `chunk_size` | 800 | Размер чанка в символах |
 | `chunk_overlap` | 100 | Перекрытие между чанками |
 
 ---
@@ -372,9 +377,6 @@ pytest tests/test_nodes.py
 
 # С покрытием
 pytest --cov=rag --cov=server --cov-report=html
-
-# Только быстрые тесты (без интеграционных)
-pytest -m "not integration"
 ```
 
 ---
@@ -427,4 +429,4 @@ MIT
 
 ## Автор
 
-Создано с помощью Claude Code (Opus 4.5) в рамках курса OTUS "AI for Developers".
+Создано с помощью Claude Code (Sonnet 4.6) в рамках курса OTUS "AI for Developers".
