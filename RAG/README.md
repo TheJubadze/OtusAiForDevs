@@ -60,6 +60,8 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
+> Для пошаговой установки на Windows (включая индексацию своего проекта) — см. [SETUP.md](SETUP.md).
+
 ---
 
 ## Использование
@@ -334,9 +336,7 @@ RAG/
 ├── requirements.txt
 ├── .env.example                # Шаблон переменных окружения
 ├── .mcp.json                   # Конфигурация MCP для Claude Code
-├── README_QUICKSTART.md        # Выбор варианта установки
-├── README_LITE.md              # Установка без локальной LLM (рекомендуется)
-├── README_FULL.md              # Установка с локальной LLM (автономный режим)
+├── SETUP.md                    # Пошаговая установка: LITE (без LLM) и FULL (с LLM)
 ├── REPORT.md                   # История разработки
 └── README.md                   # Эта инструкция
 ```
