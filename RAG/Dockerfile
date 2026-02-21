@@ -38,4 +38,5 @@ ENV MCP_TRANSPORT=sse
 
 EXPOSE 8000
 
+ENTRYPOINT []
 CMD ["./entrypoint.sh"]
