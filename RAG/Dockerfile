@@ -1,23 +1,20 @@
-# Stage 1: grab Ollama binary from official image
-FROM ollama/ollama:latest AS ollama-bin
-
-# Stage 2: main image
-FROM python:3.12-slim
+# Base: official Ollama image (includes CUDA runtime for GPU support)
+FROM ollama/ollama:latest
 
 WORKDIR /app
 
-# System dependencies
+# Install Python and build tools
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Ollama binary from official image
-COPY --from=ollama-bin /usr/bin/ollama /usr/bin/ollama
-
 # Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Application code
 COPY rag/ ./rag/

@@ -19,4 +19,4 @@ ollama pull qwen2.5:3b
 echo "Модели готовы!"
 
 # Start MCP server (keeps the container alive)
-exec python server.py
+exec python3 server.py
