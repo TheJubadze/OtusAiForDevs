@@ -16,6 +16,15 @@ echo "Ollama is ready."
 echo "Checking models..."
 ollama pull nomic-embed-text
 ollama pull qwen2.5:3b
+
+# Warm up: load models into GPU memory before server starts
+echo "Warming up models..."
+curl -s -X POST http://localhost:11434/api/embeddings \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"nomic-embed-text","prompt":"warmup"}' > /dev/null
+curl -s -X POST http://localhost:11434/api/chat \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"qwen2.5:3b","messages":[{"role":"user","content":"hi"}],"stream":false}' > /dev/null
 echo "Модели готовы!"
 
 # Start MCP server (keeps the container alive)
