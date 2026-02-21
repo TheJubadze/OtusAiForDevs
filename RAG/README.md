@@ -16,7 +16,11 @@ MCP-сервер, который превращает папку с докуме
 # CPU (универсальный)
 docker run -d -p 8000:8000 -v pdd-ollama:/root/.ollama --name pdd-unicorn thejubadze/pdd-unicorn:latest
 
-# NVIDIA GPU (быстрее в 10–20 раз, требует nvidia-container-toolkit)
+# NVIDIA GPU (быстрее в 10–20 раз)
+# Сначала проверь, что GPU доступен в Docker:
+#   nvidia-smi
+#   docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi
+# Если оба показывают карту — запускай:
 docker run -d -p 8000:8000 -v pdd-ollama:/root/.ollama --gpus all --name pdd-unicorn thejubadze/pdd-unicorn:latest
 ```
 
