@@ -13,7 +13,11 @@ MCP-сервер, который превращает папку с докуме
 ### Шаг 1 — Запустить
 
 ```bash
+# CPU (универсальный)
 docker run -d -p 8000:8000 -v pdd-ollama:/root/.ollama --name pdd-unicorn thejubadze/pdd-unicorn:latest
+
+# NVIDIA GPU (быстрее в 10–20 раз, требует nvidia-container-toolkit)
+docker run -d -p 8000:8000 -v pdd-ollama:/root/.ollama --gpus all --name pdd-unicorn thejubadze/pdd-unicorn:latest
 ```
 
 ### Шаг 2 — Дождаться загрузки моделей (~5–15 мин при первом запуске)
