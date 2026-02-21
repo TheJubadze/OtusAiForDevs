@@ -105,6 +105,7 @@ class VectorStore:
         self.embedding_function = ef.OllamaEmbeddingFunction(
             url=ollama_url,
             model_name=embed_model,
+            timeout=120,
         )
 
         self.client = chromadb.PersistentClient(path=chroma_path)
