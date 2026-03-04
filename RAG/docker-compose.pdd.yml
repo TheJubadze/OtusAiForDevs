@@ -1,0 +1,20 @@
+# Docker Compose для демо «Правила движения единорогов по Тилимилитрямдии»
+#
+# Запуск:
+#   docker compose -f docker-compose.pdd.yml up -d
+#
+# Подключение к Claude Code (после запуска):
+#   claude mcp add pdd-unicorn --transport sse http://localhost:8000/sse
+
+services:
+  pdd-unicorn:
+    image: thejubadze/pdd-unicorn:latest
+    container_name: pdd-unicorn
+    ports:
+      - "8000:8000"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

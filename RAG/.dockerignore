@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Data
+chroma_db/
+chroma_db_v2/
+chroma_db_v3/
+chroma_db_langgraph/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# Git
+.git/
+.gitignore
+
+# Tests
+test_*.py
+tests/
+.pytest_cache/
+
+# Docs
+*.md
+!requirements.txt
+
+# Misc
+.env
+.env.*
+*.log

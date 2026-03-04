@@ -1,0 +1,68 @@
+services:
+  # Ollama - LLM и эмбеддинги
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Для CPU-only убрать секцию deploy выше и раскомментировать:
+    # environment:
+    #   - OLLAMA_NUM_THREADS=4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Загрузка моделей при первом запуске
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: rag-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling models..."
+        ollama pull qwen2.5:3b
+        ollama pull nomic-embed-text
+        echo "Models ready!"
+    restart: "no"
+
+  # RAG MCP Server
+  rag-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-server
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./sample_docs:/app/data:ro
+      - chroma_data:/app/chroma_db
+    environment:
+      - CHROMA_PATH=/app/chroma_db
+      - COLLECTION_NAME=documents
+      - LLM_MODEL=qwen2.5:3b
+      - OLLAMA_HOST=http://ollama:11434
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  chroma_data:
