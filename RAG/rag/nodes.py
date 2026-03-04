@@ -20,15 +20,10 @@ def create_nodes(vector_store: VectorStore, llm: LLM):
         original = state["original_query"]
         retry_count = state.get("retry_count", 0)
 
-        # On first pass, just clean up the query
+        # On first pass, use the original query as-is.
+        # Small LLMs (3b) often corrupt specialized queries on rewrite.
         if retry_count == 0:
-            prompt = f"""Перепиши запрос для поиска по документации.
-Сделай его более конкретным и техническим.
-Сохрани смысл, но добавь ключевые термины если нужно.
-
-Исходный запрос: {original}
-
-Отвечай ТОЛЬКО переписанным запросом, без пояснений."""
+            return {"rewritten_query": original}
         else:
             # On retry, try different angle
             previous = state.get("rewritten_query", original)
@@ -69,51 +64,17 @@ def create_nodes(vector_store: VectorStore, llm: LLM):
 
 
     def grade_chunks(state: RAGState) -> Dict[str, Any]:
-        """Grade retrieved chunks for relevance."""
+        """Grade retrieved chunks for relevance.
 
-        query = state["original_query"]
+        Small LLMs (3b) are unreliable at grading specialized/fictional content,
+        so we pass all retrieved docs through and let generate decide.
+        """
+
         docs = state["retrieved_docs"]
 
-        relevant = []
-
-        for doc in docs:
-            content = doc["content"]
-            if len(content) > 800:
-                # Обрезаем по границе предложения, чтобы не терять контекст
-                truncated = content[:800]
-                last_period = truncated.rfind(".")
-                if last_period > 400:
-                    truncated = truncated[: last_period + 1]
-                content = truncated
-
-            prompt = f"""Ты — фильтр релевантности для базы знаний. Твоя задача — определить, \
-относится ли документ к той же теме, что и вопрос.
-
-ВАЖНО:
-- База знаний может содержать специализированные, технические или выдуманные термины — это нормально.
-- Не оценивай достоверность терминов, только тематическое соответствие.
-- Если документ хотя бы частично отвечает на вопрос или относится к той же теме — считай его релевантным.
-
-ВОПРОС: {query}
-
-ДОКУМЕНТ:
-{content}
-
-Документ относится к той же теме, что и вопрос?
-Отвечай JSON: {{"relevant": true}} или {{"relevant": false}}"""
-
-            try:
-                result = llm.generate_json(prompt)
-                data = json.loads(result)
-                if data.get("relevant", False):
-                    relevant.append(doc)
-            except (json.JSONDecodeError, KeyError):
-                # If can't parse, include document to be safe
-                relevant.append(doc)
-
         return {
-            "relevant_docs": relevant,
-            "has_relevant_docs": len(relevant) > 0,
+            "relevant_docs": docs,
+            "has_relevant_docs": len(docs) > 0,
         }
 
 
